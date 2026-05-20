@@ -840,63 +840,10 @@ st.markdown(
         background: linear-gradient(135deg, #f7faff 0%, #ffffff 45%, #f3f7ff 100%);
     }
 
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #06175f 0%, #092b8d 55%, #0d47c9 100%);
-        border-right: 0;
-    }
-
-    section[data-testid="stSidebar"] * {
-        color: #ffffff;
-    }
-
     .block-container {
         padding-top: 2rem;
         padding-bottom: 2.5rem;
         max-width: 1180px;
-    }
-
-    .forus-brand {
-        padding: 1.1rem 0.6rem 1.6rem;
-        border-bottom: 1px solid rgba(255,255,255,0.18);
-        margin-bottom: 1rem;
-    }
-
-    .forus-logo {
-        font-size: 2.4rem;
-        font-weight: 850;
-        letter-spacing: 0.04em;
-        line-height: 1;
-    }
-
-    .forus-tagline {
-        font-size: 0.72rem;
-        letter-spacing: 0.38em;
-        opacity: 0.88;
-        margin-top: 0.45rem;
-    }
-
-    .side-pill {
-        display: flex;
-        align-items: center;
-        gap: 0.7rem;
-        padding: 0.85rem 1rem;
-        margin: 0.35rem 0;
-        border-radius: 14px;
-        background: rgba(255,255,255,0.10);
-        font-weight: 650;
-    }
-
-    .side-pill.active {
-        background: linear-gradient(90deg, #1f6bff, #164bd6);
-        box-shadow: 0 12px 28px rgba(0,0,0,0.22);
-    }
-
-    .help-card {
-        margin-top: 3rem;
-        padding: 1.1rem;
-        border-radius: 16px;
-        background: rgba(255,255,255,0.10);
-        border: 1px solid rgba(255,255,255,0.18);
     }
 
     .hero {
@@ -913,6 +860,31 @@ st.markdown(
         font-size: 2.35rem;
         line-height: 1.08;
         letter-spacing: 0;
+    }
+
+    .top-logo {
+        margin-bottom: 1.2rem;
+        display: flex;
+        align-items: center;
+    }
+
+    .top-logo img {
+        max-width: 230px;
+        height: auto;
+    }
+
+    .top-logo-text {
+        color: var(--forus-blue);
+        font-size: 2.2rem;
+        font-weight: 850;
+        letter-spacing: 0.05em;
+    }
+
+    .top-logo-sub {
+        color: var(--forus-blue);
+        font-size: 0.75rem;
+        letter-spacing: 0.34em;
+        margin-top: 0.35rem;
     }
 
     .hero p {
@@ -1051,30 +1023,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-with st.sidebar:
-    if LOGO_PATH.exists():
-        st.image(str(LOGO_PATH), use_container_width=True)
-    else:
-        st.markdown(
-            """
-            <div class="forus-brand">
-                <div class="forus-logo">FORUS</div>
-                <div class="forus-tagline">CONSUMER FANATIC</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
+if LOGO_PATH.exists():
+    st.markdown('<div class="top-logo">', unsafe_allow_html=True)
+    st.image(str(LOGO_PATH), width=230)
+    st.markdown("</div>", unsafe_allow_html=True)
+else:
     st.markdown(
         """
-        <div class="side-pill active">Inicio</div>
-        <div class="side-pill">Subir PDF</div>
-        <div class="side-pill">Procesar Excel</div>
-        <div class="side-pill">Validaciones</div>
-        <div class="side-pill">Soporte</div>
-        <div class="help-card">
-            <b>Necesitas ayuda?</b>
-            <p style="font-size:0.88rem; opacity:0.9;">Comparte el archivo y el mensaje de error para revisarlo.</p>
+        <div class="top-logo">
+            <div>
+                <div class="top-logo-text">FORUS</div>
+                <div class="top-logo-sub">CONSUMER FANATIC</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
