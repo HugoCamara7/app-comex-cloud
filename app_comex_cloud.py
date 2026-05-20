@@ -1,11 +1,14 @@
 import io
 import re
 from collections import defaultdict
+from pathlib import Path
 
 import pandas as pd
 import pdfplumber
 import streamlit as st
 
+
+LOGO_PATH = Path("logo_forus.png")
 
 SUFIJOS_MARCA = {
     "_CLB.pdf": "COLUMBIA",
@@ -821,9 +824,280 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Lectura PDF Forus - Comex")
-st.write("Sube facturas y descarga el Excel consolidado con la misma estructura.")
-st.info("Nombres esperados: Columbia/Mountain _CLB.pdf | Parfois _PRF.pdf | Vans _VNS.pdf")
+st.markdown(
+    """
+    <style>
+    :root {
+        --forus-blue: #082477;
+        --forus-blue-2: #0b48d8;
+        --forus-ink: #071832;
+        --forus-muted: #60708d;
+        --forus-border: #dbe5f4;
+        --forus-soft: #f5f8fd;
+    }
+
+    .stApp {
+        background: linear-gradient(135deg, #f7faff 0%, #ffffff 45%, #f3f7ff 100%);
+    }
+
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #06175f 0%, #092b8d 55%, #0d47c9 100%);
+        border-right: 0;
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: #ffffff;
+    }
+
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2.5rem;
+        max-width: 1180px;
+    }
+
+    .forus-brand {
+        padding: 1.1rem 0.6rem 1.6rem;
+        border-bottom: 1px solid rgba(255,255,255,0.18);
+        margin-bottom: 1rem;
+    }
+
+    .forus-logo {
+        font-size: 2.4rem;
+        font-weight: 850;
+        letter-spacing: 0.04em;
+        line-height: 1;
+    }
+
+    .forus-tagline {
+        font-size: 0.72rem;
+        letter-spacing: 0.38em;
+        opacity: 0.88;
+        margin-top: 0.45rem;
+    }
+
+    .side-pill {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        padding: 0.85rem 1rem;
+        margin: 0.35rem 0;
+        border-radius: 14px;
+        background: rgba(255,255,255,0.10);
+        font-weight: 650;
+    }
+
+    .side-pill.active {
+        background: linear-gradient(90deg, #1f6bff, #164bd6);
+        box-shadow: 0 12px 28px rgba(0,0,0,0.22);
+    }
+
+    .help-card {
+        margin-top: 3rem;
+        padding: 1.1rem;
+        border-radius: 16px;
+        background: rgba(255,255,255,0.10);
+        border: 1px solid rgba(255,255,255,0.18);
+    }
+
+    .hero {
+        display: grid;
+        grid-template-columns: 1fr 260px;
+        gap: 2rem;
+        align-items: center;
+        margin-bottom: 1.4rem;
+    }
+
+    .hero h1 {
+        margin: 0;
+        color: var(--forus-ink);
+        font-size: 2.35rem;
+        line-height: 1.08;
+        letter-spacing: 0;
+    }
+
+    .hero p {
+        color: var(--forus-muted);
+        font-size: 1.02rem;
+        margin-top: 0.9rem;
+    }
+
+    .hero-art {
+        min-height: 160px;
+        border-radius: 24px;
+        background:
+            radial-gradient(circle at 78% 68%, rgba(40,119,255,0.28), transparent 28%),
+            linear-gradient(145deg, #ffffff 0%, #eaf2ff 100%);
+        border: 1px solid var(--forus-border);
+        position: relative;
+        box-shadow: 0 22px 50px rgba(8,36,119,0.10);
+    }
+
+    .hero-art::before {
+        content: "PDF";
+        position: absolute;
+        left: 68px;
+        top: 58px;
+        color: white;
+        background: linear-gradient(135deg, #0b48d8, #1d7cff);
+        border-radius: 10px;
+        padding: 0.65rem 1rem;
+        font-size: 1.55rem;
+        font-weight: 850;
+        box-shadow: 0 16px 30px rgba(13,71,201,0.30);
+    }
+
+    .hero-art::after {
+        content: "";
+        position: absolute;
+        right: 54px;
+        top: 40px;
+        width: 88px;
+        height: 112px;
+        border-radius: 14px;
+        background: #ffffff;
+        box-shadow: inset 0 -42px 0 #eef5ff, 0 18px 36px rgba(8,36,119,0.10);
+    }
+
+    .rule-box {
+        background: linear-gradient(90deg, #eaf4ff 0%, #f7fbff 100%);
+        border: 1px solid #d5e8ff;
+        border-radius: 14px;
+        padding: 1.1rem 1.25rem;
+        color: var(--forus-ink);
+        margin: 1rem 0 1.4rem;
+    }
+
+    .rule-box b {
+        color: var(--forus-blue);
+    }
+
+    .panel {
+        background: rgba(255,255,255,0.92);
+        border: 1px solid var(--forus-border);
+        border-radius: 18px;
+        padding: 1.35rem;
+        box-shadow: 0 18px 46px rgba(8,36,119,0.08);
+        margin-bottom: 1.25rem;
+    }
+
+    .panel h3 {
+        margin-top: 0;
+        color: var(--forus-ink);
+    }
+
+    div[data-testid="stFileUploader"] {
+        border: 1px dashed #bfd2ec;
+        background: #fbfdff;
+        border-radius: 16px;
+        padding: 1.1rem;
+    }
+
+    div[data-testid="stFileUploader"] section {
+        border: 0;
+        background: transparent;
+    }
+
+    .stButton button, .stDownloadButton button {
+        background: linear-gradient(90deg, #082477, #0b48d8);
+        color: #ffffff;
+        border: 0;
+        border-radius: 11px;
+        padding: 0.7rem 1.15rem;
+        font-weight: 750;
+        box-shadow: 0 12px 24px rgba(8,36,119,0.18);
+    }
+
+    .stButton button:hover, .stDownloadButton button:hover {
+        color: #ffffff;
+        border: 0;
+        filter: brightness(1.05);
+    }
+
+    .benefits {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        margin-top: 1.2rem;
+    }
+
+    .benefit {
+        background: #ffffff;
+        border: 1px solid var(--forus-border);
+        border-radius: 16px;
+        padding: 1rem;
+        box-shadow: 0 14px 36px rgba(8,36,119,0.06);
+    }
+
+    .benefit b {
+        color: var(--forus-ink);
+    }
+
+    .benefit p {
+        margin: 0.35rem 0 0;
+        color: var(--forus-muted);
+        font-size: 0.92rem;
+    }
+
+    @media (max-width: 900px) {
+        .hero {
+            grid-template-columns: 1fr;
+        }
+        .benefits {
+            grid-template-columns: 1fr;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+with st.sidebar:
+    if LOGO_PATH.exists():
+        st.image(str(LOGO_PATH), use_container_width=True)
+    else:
+        st.markdown(
+            """
+            <div class="forus-brand">
+                <div class="forus-logo">FORUS</div>
+                <div class="forus-tagline">CONSUMER FANATIC</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        """
+        <div class="side-pill active">Inicio</div>
+        <div class="side-pill">Subir PDF</div>
+        <div class="side-pill">Procesar Excel</div>
+        <div class="side-pill">Validaciones</div>
+        <div class="side-pill">Soporte</div>
+        <div class="help-card">
+            <b>Necesitas ayuda?</b>
+            <p style="font-size:0.88rem; opacity:0.9;">Comparte el archivo y el mensaje de error para revisarlo.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.markdown(
+    """
+    <div class="hero">
+        <div>
+            <h1>Lectura PDF Forus - Comex</h1>
+            <p>Sube facturas y descarga el Excel consolidado con la estructura requerida.</p>
+        </div>
+        <div class="hero-art"></div>
+    </div>
+    <div class="rule-box">
+        <b>Nombres esperados:</b><br>
+        Columbia/Mountain <b>_CLB.pdf</b> &nbsp;|&nbsp;
+        Parfois <b>_PRF.pdf</b> &nbsp;|&nbsp;
+        Vans <b>_VNS.pdf</b>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 uploaded_files = st.file_uploader(
     "Subir PDFs",
@@ -833,6 +1107,8 @@ uploaded_files = st.file_uploader(
 
 valid_files = []
 invalid_files = []
+
+st.markdown('<div class="panel"><h3>Archivos cargados</h3>', unsafe_allow_html=True)
 
 if uploaded_files:
     for file in uploaded_files:
@@ -863,8 +1139,14 @@ if uploaded_files:
             use_container_width=True,
             hide_index=True,
         )
+else:
+    st.write("Carga tus archivos PDF para comenzar el proceso.")
 
-if st.button("Procesar y generar Excel", type="primary", disabled=not valid_files):
+st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown('<div class="panel"><h3>Procesar y generar Excel</h3><p>Convierte tus PDFs en un Excel consolidado con las hojas Detalle, Resumen, Facturas y Auditoria_Paginas.</p>', unsafe_allow_html=True)
+
+if st.button("Procesar archivos", type="primary", disabled=not valid_files):
     with st.spinner("Procesando PDFs..."):
         excel_bytes, detail_rows, invoice_rows = build_excel(valid_files)
 
@@ -878,3 +1160,16 @@ if st.button("Procesar y generar Excel", type="primary", disabled=not valid_file
         file_name="salida_comex_multi_marca.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown(
+    """
+    <div class="benefits">
+        <div class="benefit"><b>Seguro y controlado</b><p>La lectura usa reglas de Python para las marcas implementadas.</p></div>
+        <div class="benefit"><b>Procesamiento rapido</b><p>Genera el Excel en minutos sin consumo de tokens de IA.</p></div>
+        <div class="benefit"><b>Estructura garantizada</b><p>Entrega siempre las mismas hojas y columnas de salida.</p></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
