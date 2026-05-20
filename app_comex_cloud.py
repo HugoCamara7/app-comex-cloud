@@ -8,7 +8,7 @@ import pdfplumber
 import streamlit as st
 
 
-LOGO_PATH = Path("logo_forus.png")
+LOGO_PATH = Path("forus_logo.png")
 
 SUFIJOS_MARCA = {
     "_CLB.pdf": "COLUMBIA",
@@ -900,34 +900,16 @@ st.markdown(
             radial-gradient(circle at 78% 68%, rgba(40,119,255,0.28), transparent 28%),
             linear-gradient(145deg, #ffffff 0%, #eaf2ff 100%);
         border: 1px solid var(--forus-border);
-        position: relative;
         box-shadow: 0 22px 50px rgba(8,36,119,0.10);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
     }
 
-    .hero-art::before {
-        content: "PDF";
-        position: absolute;
-        left: 68px;
-        top: 58px;
-        color: white;
-        background: linear-gradient(135deg, #0b48d8, #1d7cff);
-        border-radius: 10px;
-        padding: 0.65rem 1rem;
-        font-size: 1.55rem;
-        font-weight: 850;
-        box-shadow: 0 16px 30px rgba(13,71,201,0.30);
-    }
-
-    .hero-art::after {
-        content: "";
-        position: absolute;
-        right: 54px;
-        top: 40px;
-        width: 88px;
-        height: 112px;
-        border-radius: 14px;
-        background: #ffffff;
-        box-shadow: inset 0 -42px 0 #eef5ff, 0 18px 36px rgba(8,36,119,0.10);
+    .hero-art svg {
+        width: 185px;
+        height: 130px;
     }
 
     .rule-box {
@@ -1025,7 +1007,7 @@ st.markdown(
 
 if LOGO_PATH.exists():
     st.markdown('<div class="top-logo">', unsafe_allow_html=True)
-    st.image(str(LOGO_PATH), width=120)
+    st.image(str(LOGO_PATH), width=230)
     st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.markdown(
@@ -1047,7 +1029,32 @@ st.markdown(
             <h1>Lectura PDF Forus - Comex</h1>
             <p>Sube facturas y descarga el Excel consolidado con la estructura requerida.</p>
         </div>
-        <div class="hero-art"></div>
+        <div class="hero-art">
+            <svg viewBox="0 0 220 150" role="img" aria-label="PDF upload">
+                <defs>
+                    <linearGradient id="docBg" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#ffffff"/>
+                        <stop offset="100%" stop-color="#eaf2ff"/>
+                    </linearGradient>
+                    <linearGradient id="pdfBg" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#0b48d8"/>
+                        <stop offset="100%" stop-color="#1d7cff"/>
+                    </linearGradient>
+                    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+                        <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#082477" flood-opacity="0.20"/>
+                    </filter>
+                </defs>
+                <rect x="60" y="12" width="92" height="116" rx="13" fill="url(#docBg)" filter="url(#softShadow)"/>
+                <path d="M126 12h26v28h-14c-7 0-12-5-12-12V12z" fill="#bfd5ff"/>
+                <rect x="78" y="48" width="54" height="7" rx="3.5" fill="#cad8ee"/>
+                <rect x="78" y="65" width="58" height="7" rx="3.5" fill="#cad8ee"/>
+                <rect x="78" y="82" width="45" height="7" rx="3.5" fill="#cad8ee"/>
+                <rect x="28" y="69" width="76" height="48" rx="10" fill="url(#pdfBg)" filter="url(#softShadow)"/>
+                <text x="66" y="101" text-anchor="middle" fill="#ffffff" font-size="25" font-weight="800" font-family="Arial, sans-serif">PDF</text>
+                <path d="M162 102c16 0 29-11 29-26 0-13-10-24-23-26-6-13-19-22-34-22-20 0-36 15-38 34-12 4-20 14-20 27 0 16 13 29 30 29h56z" fill="#4d98ff" opacity="0.95"/>
+                <path d="M134 94V68m0 0l-13 13m13-13l13 13" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
     </div>
     <div class="rule-box">
         <b>Nombres esperados:</b><br>
