@@ -8,7 +8,7 @@ import pdfplumber
 import streamlit as st
 
 
-LOGO_PATH = Path("forus_logo_web.png")
+LOGO_PATH = Path("forus_logo_web2.png")
 
 SUFIJOS_MARCA = {
     "_CLB.pdf": "COLUMBIA",
