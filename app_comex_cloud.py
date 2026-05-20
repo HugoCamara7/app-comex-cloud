@@ -1,29 +1,25 @@
-import os
+import io
 import re
 from collections import defaultdict
 
 import pandas as pd
 import pdfplumber
+import streamlit as st
 
 
-BASE_DIR = r"C:\Users\hcamara\Peru Forus S.A\Lectura PDF Forus"
-PDF_DIR = os.path.join(BASE_DIR, "pdfs")
-OUTPUT_EXCEL = os.path.join(BASE_DIR, "salida_multi_marca_formato_modelo.xlsx")
-
-# Regla de nombres para Comex:
-# - Columbia / Mountain Hardwear: termina en _CLB.pdf
-# - Parfois: termina en _PRF.pdf
-# - Vans: termina en _VNS.pdf
 SUFIJOS_MARCA = {
     "_CLB.pdf": "COLUMBIA",
     "_PRF.pdf": "PARFOIS",
     "_VNS.pdf": "VANS",
 }
 
-# Para pruebas: procesa solo las primeras 30 paginas.
-# Cuando quieras procesar TODO el PDF, cambia 30 por None.
-MAX_PAGINAS_PRUEBA = None
 
+def get_brand_from_filename(filename):
+    upper_name = filename.upper()
+    for suffix, brand in SUFIJOS_MARCA.items():
+        if upper_name.endswith(suffix.upper()):
+            return brand
+    return None
 
 DETAIL_COLUMNS = [
     "Start Page",
@@ -106,7 +102,7 @@ def parse_quantity(value):
     if not text:
         return None
 
-    # En cantidades Columbia, 1.300 significa 1300, no 1.3.
+    # En cantidades, 1.300 significa 1300.
     text = text.replace(".", "").replace(",", "")
 
     try:
@@ -122,64 +118,21 @@ def clean_text(value):
     return text if text else None
 
 
-def get_output_filename(path):
-    if not os.path.exists(path):
-        return path
-
-    try:
-        with open(path, "a+b"):
-            return path
-    except PermissionError:
-        base, ext = os.path.splitext(path)
-        return f"{base}_nuevo{ext}"
+def extract_header_invoice(text):
+    match = re.search(r"PERUFORUS S\.A\.\s+(\d{8,12})\s+(.+?)\s+PERUFORUS S\.A\.", text)
+    return match.group(1) if match else None
 
 
-def find_target_pdfs():
-    return sorted(
-        name for name in os.listdir(PDF_DIR)
-        if get_brand_from_filename(name) is not None
-    )
+def extract_footer_invoice(text):
+    match = re.search(r"Invoice #:\s*(\d{8,12})\s+Page\s+\d+\s+of\s+\d+", text)
+    return match.group(1) if match else None
 
 
-def get_brand_from_filename(filename):
-    upper_name = filename.upper()
-    for suffix, brand in SUFIJOS_MARCA.items():
-        if upper_name.endswith(suffix.upper()):
-            return brand
-    return None
-
-
-def detect_pdf_brand(pdf, pdf_path=None):
-    if pdf_path:
-        brand_from_name = get_brand_from_filename(os.path.basename(pdf_path))
-        if brand_from_name:
-            return brand_from_name
-
-    return detect_pdf_brand_from_content(pdf)
-
-
-def detect_pdf_brand_from_content(pdf):
-    first_text = pdf.pages[0].extract_text() or ""
-    upper = first_text.upper()
-
-    if "VANS, A DIVISION OF VF OUTDOOR" in upper:
-        return "VANS"
-
-    if "PARFOIS" in upper or "BARATA & RAMILO" in upper:
-        return "PARFOIS"
-
-    return "COLUMBIA"
-
-
-def filename_matches_content(pdf_path):
-    expected_brand = get_brand_from_filename(os.path.basename(pdf_path))
-    if expected_brand is None:
-        return False, None, None
-
-    with pdfplumber.open(pdf_path) as pdf:
-        content_brand = detect_pdf_brand_from_content(pdf)
-
-    return expected_brand == content_brand, expected_brand, content_brand
+def extract_invoice_pages(text):
+    matches = re.findall(r"Invoice #:\s*\d{8,12}\s+Page\s+\d+\s+of\s+(\d+)", text)
+    if not matches:
+        return 1
+    return max(parse_quantity(value) or 1 for value in matches)
 
 
 def classify_page(text, current_invoice):
@@ -198,23 +151,6 @@ def classify_page(text, current_invoice):
         return "bill_of_lading", None
 
     return "other", current_invoice
-
-
-def extract_header_invoice(text):
-    match = re.search(r"PERUFORUS S\.A\.\s+(\d{8,12})\s+(.+?)\s+PERUFORUS S\.A\.", text)
-    return match.group(1) if match else None
-
-
-def extract_footer_invoice(text):
-    match = re.search(r"Invoice #:\s*(\d{8,12})\s+Page\s+\d+\s+of\s+\d+", text)
-    return match.group(1) if match else None
-
-
-def extract_invoice_pages(text):
-    matches = re.findall(r"Invoice #:\s*\d{8,12}\s+Page\s+\d+\s+of\s+(\d+)", text)
-    if not matches:
-        return 1
-    return max(parse_quantity(value) or 1 for value in matches)
 
 
 def extract_header_fields(text):
@@ -253,10 +189,8 @@ def extract_header_fields(text):
         cartons = parse_quantity(m_cartons.group(1))
 
     invoice_total = None
-    currency = None
     m_total = re.search(r"Invoice Total\s+([A-Z]{3}):\s*([\d.,]+)", text)
     if m_total:
-        currency = m_total.group(1)
         invoice_total = parse_money(m_total.group(2))
 
     return {
@@ -267,7 +201,6 @@ def extract_header_fields(text):
         "brand": brand,
         "style": style,
         "style_desc": style_desc,
-        "currency": currency,
         "total_quantity": total_qty,
         "cartons": cartons,
         "invoice_total": invoice_total,
@@ -302,7 +235,6 @@ def parse_color_header(line):
 
     return {
         "sizes": tokens[:-6],
-        "color_total_qty": parse_quantity(tokens[-6]),
         "um": tokens[-5],
         "base_price": parse_money(tokens[-4]),
         "unit_discount": parse_money(tokens[-3]),
@@ -436,9 +368,7 @@ def build_invoice_summary(detail_rows):
             "Style Description": first["Style Description"],
             "Colors": len({row["Color"] for row in invoice_rows if row["Color"]}),
             "Item Rows": len(invoice_rows),
-            "Total Quantity Shipped": sum(
-                row["Quantity Shipped"] or 0 for row in invoice_rows
-            ),
+            "Total Quantity Shipped": sum(row["Quantity Shipped"] or 0 for row in invoice_rows),
             "Cartons": sum(row["Cartons"] or 0 for row in invoice_rows),
             "Invoice Total USD": first["Invoice Total USD"],
         })
@@ -452,12 +382,17 @@ def split_lines(value):
     return [line.strip() for line in str(value).splitlines() if line.strip()]
 
 
+def extract_vans_invoice_pages(text):
+    matches = re.findall(r"Page\s+\d+\s+of\s+(\d+)", text)
+    if not matches:
+        return 1
+    return max(parse_quantity(value) or 1 for value in matches)
+
+
 def parse_vans_header(text, tables):
     invoice_number = None
     invoice_date = None
     customer_po = None
-    incoterms = None
-    payment_terms = None
 
     if tables:
         for row in tables[0]:
@@ -475,10 +410,6 @@ def parse_vans_header(text, tables):
                     invoice_date = value
                 elif label == "purchase order #":
                     customer_po = value
-                elif label == "incoterms 2020":
-                    incoterms = value
-                elif label == "payment terms":
-                    payment_terms = value
 
     sales_order = None
     shipment_reference = None
@@ -505,23 +436,12 @@ def parse_vans_header(text, tables):
         "order_no": sales_order,
         "customer_po": customer_po,
         "brand": "VANS",
-        "seller": "VANS, A DIVISION OF VF OUTDOOR LLC",
-        "buyer": "PERU FORUS SA",
-        "payment_terms": payment_terms,
-        "incoterms": incoterms,
         "cartons": cartons,
         "total_quantity": total_qty,
         "invoice_total": invoice_total,
         "shipment_reference": shipment_reference,
         "invoice_pages": extract_vans_invoice_pages(text),
     }
-
-
-def extract_vans_invoice_pages(text):
-    matches = re.findall(r"Page\s+\d+\s+of\s+(\d+)", text)
-    if not matches:
-        return 1
-    return max(parse_quantity(value) or 1 for value in matches)
 
 
 def parse_vans_items_from_tables(tables, header, start_page):
@@ -598,17 +518,16 @@ def parse_vans_items_from_tables(tables, header, start_page):
     return items
 
 
-def process_vans_pdf(pdf_path):
+def process_vans_pdf(uploaded_file):
     detail_rows = []
     audit_rows = []
 
-    with pdfplumber.open(pdf_path) as pdf:
-        pages_to_process = pdf.pages[:MAX_PAGINAS_PRUEBA] if MAX_PAGINAS_PRUEBA is not None else pdf.pages
-        total_pages_real = len(pdf.pages)
+    with pdfplumber.open(io.BytesIO(uploaded_file.getvalue())) as pdf:
+        total_pages = len(pdf.pages)
         current_invoice = None
         invoice_first_row = {}
 
-        for page_number, page in enumerate(pages_to_process, start=1):
+        for page_number, page in enumerate(pdf.pages, start=1):
             text = page.extract_text() or ""
             tables = page.extract_tables() or []
             header = parse_vans_header(text, tables)
@@ -616,6 +535,7 @@ def process_vans_pdf(pdf_path):
             current_invoice = invoice_number
 
             audit_rows.append({
+                "PDF File": uploaded_file.name,
                 "Page": page_number,
                 "Role": "invoice_start" if invoice_number not in invoice_first_row else "invoice_continuation",
                 "Invoice #": invoice_number,
@@ -625,6 +545,8 @@ def process_vans_pdf(pdf_path):
                 invoice_first_row[invoice_number] = len(detail_rows)
 
             rows = parse_vans_items_from_tables(tables, header, page_number)
+            for row in rows:
+                row["PDF File"] = uploaded_file.name
             detail_rows.extend(rows)
 
             if header["cartons"] is not None and invoice_number in invoice_first_row:
@@ -634,8 +556,16 @@ def process_vans_pdf(pdf_path):
                     detail_rows[idx]["Invoice Total USD"] = header["invoice_total"]
 
     invoice_rows = build_invoice_summary(detail_rows)
-    summary_rows = build_summary_rows(pdf_path, total_pages_real, len(pages_to_process), detail_rows, invoice_rows, audit_rows)
+    for row in invoice_rows:
+        row["PDF File"] = uploaded_file.name
+
+    summary_rows = build_summary_rows(uploaded_file.name, total_pages, detail_rows, invoice_rows, audit_rows)
     return detail_rows, summary_rows, invoice_rows, audit_rows
+
+
+def extract_parfois_pages(text):
+    match = re.search(r"Pág\.:\s*\d+/\s*(\d+)", text)
+    return parse_quantity(match.group(1)) if match else 1
 
 
 def parse_parfois_header(first_text, full_text):
@@ -654,11 +584,6 @@ def parse_parfois_header(first_text, full_text):
     if m_po:
         customer_po = m_po.group(1)
 
-    total_qty = None
-    m_qty = re.search(r"Total Ctd\s*:\s*([\d.,]+)", full_text)
-    if m_qty:
-        total_qty = parse_quantity(m_qty.group(1))
-
     cartons = None
     m_cartons = re.search(r"Número total de cajas:\s*([\d.,]+)", full_text)
     if m_cartons:
@@ -675,18 +600,10 @@ def parse_parfois_header(first_text, full_text):
         "order_no": customer_po,
         "customer_po": customer_po,
         "brand": "PARFOIS",
-        "seller": "BARATA & RAMILO, SA",
-        "buyer": "Peru Forus SA",
         "cartons": cartons,
-        "total_quantity": total_qty,
         "invoice_total": invoice_total,
         "invoice_pages": extract_parfois_pages(first_text),
     }
-
-
-def extract_parfois_pages(text):
-    m = re.search(r"Pág\.:\s*\d+/\s*(\d+)", text)
-    return parse_quantity(m.group(1)) if m else 1
 
 
 def parse_parfois_rows_from_table(table, header, start_page):
@@ -733,22 +650,22 @@ def parse_parfois_rows_from_table(table, header, start_page):
     return rows
 
 
-def process_parfois_pdf(pdf_path):
+def process_parfois_pdf(uploaded_file):
     detail_rows = []
     audit_rows = []
     all_text = []
     page_tables = []
 
-    with pdfplumber.open(pdf_path) as pdf:
-        pages_to_process = pdf.pages[:MAX_PAGINAS_PRUEBA] if MAX_PAGINAS_PRUEBA is not None else pdf.pages
-        total_pages_real = len(pdf.pages)
+    with pdfplumber.open(io.BytesIO(uploaded_file.getvalue())) as pdf:
+        total_pages = len(pdf.pages)
 
-        for page_number, page in enumerate(pages_to_process, start=1):
+        for page_number, page in enumerate(pdf.pages, start=1):
             text = page.extract_text() or ""
             all_text.append(text)
             tables = page.extract_tables() or []
             page_tables.append((page_number, tables))
             audit_rows.append({
+                "PDF File": uploaded_file.name,
                 "Page": page_number,
                 "Role": "invoice_start" if page_number == 1 else "invoice_continuation",
                 "Invoice #": None,
@@ -761,54 +678,44 @@ def process_parfois_pdf(pdf_path):
 
         for page_number, tables in page_tables:
             for table in tables:
-                detail_rows.extend(parse_parfois_rows_from_table(table, header, page_number))
+                rows = parse_parfois_rows_from_table(table, header, page_number)
+                for row in rows:
+                    row["PDF File"] = uploaded_file.name
+                detail_rows.extend(rows)
 
     if detail_rows and header["cartons"] is not None:
         detail_rows[0]["Cartons"] = header["cartons"]
 
     invoice_rows = build_invoice_summary(detail_rows)
-    summary_rows = build_summary_rows(pdf_path, total_pages_real, len(pages_to_process), detail_rows, invoice_rows, audit_rows)
+    for row in invoice_rows:
+        row["PDF File"] = uploaded_file.name
+
+    summary_rows = build_summary_rows(uploaded_file.name, total_pages, detail_rows, invoice_rows, audit_rows)
     return detail_rows, summary_rows, invoice_rows, audit_rows
 
 
-def build_summary_rows(pdf_path, total_pages_real, pages_processed, detail_rows, invoice_rows, audit_rows):
+def build_summary_rows(pdf_name, total_pages, detail_rows, invoice_rows, audit_rows):
     return [
-        {"Metric": "PDF File", "Value": os.path.basename(pdf_path)},
-        {"Metric": "Total Pages", "Value": total_pages_real},
-        {"Metric": "Pages Processed", "Value": pages_processed},
+        {"Metric": "PDF File", "Value": pdf_name},
+        {"Metric": "Total Pages", "Value": total_pages},
         {"Metric": "Total Invoices", "Value": len(invoice_rows)},
-        {
-            "Metric": "Invoice Pages",
-            "Value": sum(row["Invoice Pages"] or 0 for row in invoice_rows),
-        },
-        {
-            "Metric": "Packing List Pages",
-            "Value": sum(1 for row in audit_rows if row["Role"] == "packing_list"),
-        },
+        {"Metric": "Invoice Pages", "Value": sum(row["Invoice Pages"] or 0 for row in invoice_rows)},
+        {"Metric": "Packing List Pages", "Value": sum(1 for row in audit_rows if row["Role"] == "packing_list")},
         {"Metric": "Item Rows", "Value": len(detail_rows)},
-        {
-            "Metric": "Total Quantity Shipped",
-            "Value": sum(row["Quantity Shipped"] or 0 for row in detail_rows),
-        },
+        {"Metric": "Total Quantity Shipped", "Value": sum(row["Quantity Shipped"] or 0 for row in detail_rows)},
     ]
 
 
-def process_columbia_pdf(pdf_path):
+def process_columbia_pdf(uploaded_file):
     detail_rows = []
     audit_rows = []
     invoice_texts = []
     current_invoice = None
 
-    with pdfplumber.open(pdf_path) as pdf:
-        total_pages_real = len(pdf.pages)
-        pages_to_process = pdf.pages
+    with pdfplumber.open(io.BytesIO(uploaded_file.getvalue())) as pdf:
+        total_pages = len(pdf.pages)
 
-        if MAX_PAGINAS_PRUEBA is not None:
-            pages_to_process = pdf.pages[:MAX_PAGINAS_PRUEBA]
-
-        total_pages = len(pages_to_process)
-
-        for page_number, page in enumerate(pages_to_process, start=1):
+        for page_number, page in enumerate(pdf.pages, start=1):
             text = page.extract_text() or ""
             role, invoice_number = classify_page(text, current_invoice)
 
@@ -840,83 +747,50 @@ def process_columbia_pdf(pdf_path):
                 header,
                 invoice_data["start_page"],
             )
+            for row in rows:
+                row["PDF File"] = uploaded_file.name
             detail_rows.extend(rows)
 
     invoice_rows = build_invoice_summary(detail_rows)
+    for row in invoice_rows:
+        row["PDF File"] = uploaded_file.name
 
-    summary_rows = build_summary_rows(pdf_path, total_pages_real, total_pages, detail_rows, invoice_rows, audit_rows)
+    for row in audit_rows:
+        row["PDF File"] = uploaded_file.name
+
+    summary_rows = build_summary_rows(uploaded_file.name, total_pages, detail_rows, invoice_rows, audit_rows)
 
     return detail_rows, summary_rows, invoice_rows, audit_rows
 
 
-def process_pdf(pdf_path):
-    with pdfplumber.open(pdf_path) as pdf:
-        brand = detect_pdf_brand(pdf, pdf_path)
+def process_pdf(uploaded_file):
+    brand = get_brand_from_filename(uploaded_file.name)
 
     if brand == "VANS":
-        return process_vans_pdf(pdf_path)
+        return process_vans_pdf(uploaded_file)
 
     if brand == "PARFOIS":
-        return process_parfois_pdf(pdf_path)
+        return process_parfois_pdf(uploaded_file)
 
-    return process_columbia_pdf(pdf_path)
+    return process_columbia_pdf(uploaded_file)
 
 
-def main():
-    if not os.path.isdir(PDF_DIR):
-        print(f"No existe la carpeta: {PDF_DIR}")
-        return
-
-    pdf_names = find_target_pdfs()
-    if not pdf_names:
-        suffixes = ", ".join(SUFIJOS_MARCA.keys())
-        print(f"No encontre PDFs que terminen en: {suffixes}")
-        return
-
+def build_excel(files):
     all_detail = []
     all_summary = []
     all_invoices = []
     all_audit = []
 
-    for pdf_name in pdf_names:
-        pdf_path = os.path.join(PDF_DIR, pdf_name)
-        matches, expected_brand, content_brand = filename_matches_content(pdf_path)
-        if not matches:
-            print(
-                f"Saltando {pdf_name}: el nombre indica {expected_brand}, "
-                f"pero el contenido parece {content_brand}."
-            )
-            continue
-
-        print(f"Procesando: {pdf_name}")
-        detail_rows, summary_rows, invoice_rows, audit_rows = process_pdf(pdf_path)
-
-        if len(pdf_names) > 1:
-            for row in detail_rows:
-                row["PDF File"] = pdf_name
-            for row in invoice_rows:
-                row["PDF File"] = pdf_name
-            for row in audit_rows:
-                row["PDF File"] = pdf_name
-
+    for uploaded_file in files:
+        detail_rows, summary_rows, invoice_rows, audit_rows = process_pdf(uploaded_file)
         all_detail.extend(detail_rows)
         all_summary.extend(summary_rows)
         all_invoices.extend(invoice_rows)
         all_audit.extend(audit_rows)
 
-    detail_columns = DETAIL_COLUMNS
-    invoice_columns = INVOICE_COLUMNS
-    audit_columns = AUDIT_COLUMNS
-
-    if len(pdf_names) > 1:
-        detail_columns = ["PDF File"] + DETAIL_COLUMNS
-        invoice_columns = ["PDF File"] + INVOICE_COLUMNS
-        audit_columns = ["PDF File"] + AUDIT_COLUMNS
-
-    output_file = get_output_filename(OUTPUT_EXCEL)
-
-    with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
-        pd.DataFrame(all_detail).reindex(columns=detail_columns).to_excel(
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(all_detail).reindex(columns=["PDF File"] + DETAIL_COLUMNS).to_excel(
             writer,
             index=False,
             sheet_name="Detalle",
@@ -926,21 +800,81 @@ def main():
             index=False,
             sheet_name="Resumen",
         )
-        pd.DataFrame(all_invoices).reindex(columns=invoice_columns).to_excel(
+        pd.DataFrame(all_invoices).reindex(columns=["PDF File"] + INVOICE_COLUMNS).to_excel(
             writer,
             index=False,
             sheet_name="Facturas",
         )
-        pd.DataFrame(all_audit).reindex(columns=audit_columns).to_excel(
+        pd.DataFrame(all_audit).reindex(columns=["PDF File"] + AUDIT_COLUMNS).to_excel(
             writer,
             index=False,
             sheet_name="Auditoria_Paginas",
         )
 
-    print(f"Excel generado: {output_file}")
-    print(f"Filas Detalle: {len(all_detail)}")
-    print(f"Facturas: {len(all_invoices)}")
+    output.seek(0)
+    return output, all_detail, all_invoices
 
 
-if __name__ == "__main__":
-    main()
+st.set_page_config(
+    page_title="Lectura PDF Forus - Comex",
+    page_icon="PDF",
+    layout="wide",
+)
+
+st.title("Lectura PDF Forus - Comex")
+st.write("Sube facturas y descarga el Excel consolidado con la misma estructura.")
+st.info("Nombres esperados: Columbia/Mountain _CLB.pdf | Parfois _PRF.pdf | Vans _VNS.pdf")
+
+uploaded_files = st.file_uploader(
+    "Subir PDFs",
+    type=["pdf"],
+    accept_multiple_files=True,
+)
+
+valid_files = []
+invalid_files = []
+
+if uploaded_files:
+    for file in uploaded_files:
+        brand = get_brand_from_filename(file.name)
+        if brand:
+            valid_files.append(file)
+        else:
+            invalid_files.append(file.name)
+
+    col1, col2 = st.columns(2)
+    col1.metric("PDFs validos", len(valid_files))
+    col2.metric("PDFs ignorados", len(invalid_files))
+
+    if invalid_files:
+        st.warning("Estos archivos se ignoraran porque no terminan en _CLB.pdf, _PRF.pdf o _VNS.pdf:")
+        st.write(invalid_files)
+
+    if valid_files:
+        st.dataframe(
+            [
+                {
+                    "PDF": file.name,
+                    "Marca": get_brand_from_filename(file.name),
+                    "Estado": "Listo para procesar",
+                }
+                for file in valid_files
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+if st.button("Procesar y generar Excel", type="primary", disabled=not valid_files):
+    with st.spinner("Procesando PDFs..."):
+        excel_bytes, detail_rows, invoice_rows = build_excel(valid_files)
+
+    st.success("Excel generado correctamente.")
+    st.metric("Facturas", len(invoice_rows))
+    st.metric("Filas detalle", len(detail_rows))
+
+    st.download_button(
+        "Descargar Excel",
+        data=excel_bytes,
+        file_name="salida_comex_multi_marca.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
