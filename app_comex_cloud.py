@@ -8,7 +8,7 @@ import pdfplumber
 import streamlit as st
 
 
-LOGO_PATH = Path("forus_logo.png")
+LOGO_PATH = Path("forus_logo_web.png")
 
 SUFIJOS_MARCA = {
     "_CLB.pdf": "COLUMBIA",
@@ -1049,10 +1049,10 @@ st.markdown(
                 <rect x="78" y="48" width="54" height="7" rx="3.5" fill="#cad8ee"/>
                 <rect x="78" y="65" width="58" height="7" rx="3.5" fill="#cad8ee"/>
                 <rect x="78" y="82" width="45" height="7" rx="3.5" fill="#cad8ee"/>
-                <rect x="28" y="69" width="76" height="48" rx="10" fill="url(#pdfBg)" filter="url(#softShadow)"/>
-                <text x="66" y="101" text-anchor="middle" fill="#ffffff" font-size="25" font-weight="800" font-family="Arial, sans-serif">PDF</text>
-                <path d="M162 102c16 0 29-11 29-26 0-13-10-24-23-26-6-13-19-22-34-22-20 0-36 15-38 34-12 4-20 14-20 27 0 16 13 29 30 29h56z" fill="#4d98ff" opacity="0.95"/>
-                <path d="M134 94V68m0 0l-13 13m13-13l13 13" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M169 106c16 0 29-11 29-26 0-13-10-24-23-26-6-13-19-22-34-22-20 0-36 15-38 34-12 4-20 14-20 27 0 16 13 29 30 29h56z" fill="#4d98ff" opacity="0.95"/>
+                <path d="M141 98V72m0 0l-13 13m13-13l13 13" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                <rect x="20" y="76" width="78" height="48" rx="10" fill="url(#pdfBg)" filter="url(#softShadow)"/>
+                <text x="59" y="108" text-anchor="middle" fill="#ffffff" font-size="25" font-weight="800" font-family="Arial, sans-serif">PDF</text>
             </svg>
         </div>
     </div>
