@@ -1025,7 +1025,7 @@ st.markdown(
 
 if LOGO_PATH.exists():
     st.markdown('<div class="top-logo">', unsafe_allow_html=True)
-    st.image(str(LOGO_PATH), width=160)
+    st.image(str(LOGO_PATH), width=120)
     st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.markdown(
