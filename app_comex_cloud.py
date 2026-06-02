@@ -8,7 +8,7 @@ import pdfplumber
 import streamlit as st
 
 
-LOGO_PATH = Path("forus_logo_web2.png")
+LOGO_PATH = Path("forus_logo_web.png")
 
 SUFIJOS_MARCA = {
     "_CLB.pdf": "COLUMBIA",
@@ -31,6 +31,7 @@ DETAIL_COLUMNS = [
     "Brand",
     "Style",
     "Style Description",
+    "Composition",
     "Color",
     "Color Description",
     "Size",
@@ -266,8 +267,13 @@ def parse_color_qty_line(line):
 def parse_hs_origin(line):
     match = re.search(r"HS:\s*([0-9]+).*?Made in:\s*([A-Za-z ]+)", line)
     if not match:
-        return None, None
-    return match.group(1), clean_text(match.group(2))
+        return None, None, None
+    hs_code = match.group(1)
+    made_in = clean_text(match.group(2))
+    composition_text = line[match.end(1):match.start(2)].strip()
+    composition_text = re.sub(r"\bFOOTWEAR\b", "", composition_text).strip(" :-")
+
+    return hs_code, made_in, clean_text(composition_text)
 
 
 def extract_items_from_invoice_text(text, header, start_page):
@@ -293,16 +299,18 @@ def extract_items_from_invoice_text(text, header, start_page):
         extra_description = []
         hs = None
         made_in = None
+        composition = None
 
         while i < len(lines):
             line = lines[i]
             if line.startswith("Color Color Description Size/Dim"):
                 break
 
-            found_hs, found_origin = parse_hs_origin(line)
+            found_hs, found_origin, found_composition = parse_hs_origin(line)
             if found_hs:
                 hs = found_hs
                 made_in = found_origin
+                composition = found_composition
                 i += 1
                 break
 
@@ -328,6 +336,7 @@ def extract_items_from_invoice_text(text, header, start_page):
                 "Brand": header["brand"] or "COL",
                 "Style": header["style"],
                 "Style Description": header["style_desc"],
+                "Composition": composition,
                 "Color": qty_info["color"],
                 "Color Description": qty_info["color_description"],
                 "Size": size,
@@ -500,6 +509,7 @@ def parse_vans_items_from_tables(tables, header, start_page):
                 "Brand": "VANS",
                 "Style": style_values[idx] if idx < len(style_values) else None,
                 "Style Description": style_name_chunks[idx] if idx < len(style_name_chunks) else None,
+                "Composition": None,
                 "Color": color_values[idx] if idx < len(color_values) else None,
                 "Color Description": color_values[idx] if idx < len(color_values) else None,
                 "Size": size_values[idx] if idx < len(size_values) else None,
@@ -567,13 +577,13 @@ def process_vans_pdf(uploaded_file):
 
 
 def extract_parfois_pages(text):
-    match = re.search(r"Pág\.:\s*\d+/\s*(\d+)", text)
+    match = re.search(r"PÃ¡g\.:\s*\d+/\s*(\d+)", text)
     return parse_quantity(match.group(1)) if match else 1
 
 
 def parse_parfois_header(first_text, full_text):
     invoice_number = None
-    m_invoice = re.search(r"Consolidación de Facturas\s+(.+)", first_text)
+    m_invoice = re.search(r"ConsolidaciÃ³n de Facturas\s+(.+)", first_text)
     if m_invoice:
         invoice_number = clean_text(m_invoice.group(1))
 
@@ -588,7 +598,7 @@ def parse_parfois_header(first_text, full_text):
         customer_po = m_po.group(1)
 
     cartons = None
-    m_cartons = re.search(r"Número total de cajas:\s*([\d.,]+)", full_text)
+    m_cartons = re.search(r"NÃºmero total de cajas:\s*([\d.,]+)", full_text)
     if m_cartons:
         cartons = parse_quantity(m_cartons.group(1))
 
@@ -616,7 +626,7 @@ def parse_parfois_rows_from_table(table, header, start_page):
             continue
 
         article = clean_text(table_row[0])
-        if not article or article.startswith("Código") or article.startswith("Outbound"):
+        if not article or article.startswith("CÃ³digo") or article.startswith("Outbound"):
             continue
 
         qty = parse_quantity(table_row[6])
@@ -633,6 +643,7 @@ def parse_parfois_rows_from_table(table, header, start_page):
             "Brand": "PARFOIS",
             "Style": article,
             "Style Description": clean_text(table_row[1]),
+            "Composition": clean_text(table_row[3]),
             "Color": None,
             "Color Description": None,
             "Size": None,
@@ -1140,3 +1151,4 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
