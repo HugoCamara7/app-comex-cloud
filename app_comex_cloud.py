@@ -1,3 +1,4 @@
+import base64
 import io
 import re
 from collections import defaultdict
@@ -16,6 +17,12 @@ SUFIJOS_MARCA = {
     "_VNS.pdf": "VANS",
 }
 
+
+
+def image_to_base64(path):
+    if not path.exists():
+        return None
+    return base64.b64encode(path.read_bytes()).decode("utf-8")
 
 def get_brand_from_filename(filename):
     upper_name = filename.upper()
@@ -1258,10 +1265,16 @@ st.markdown(
 )
 
 with st.sidebar:
-    if LOGO_PATH.exists():
-        st.markdown('<div class="side-logo">', unsafe_allow_html=True)
-        st.image(str(LOGO_PATH), use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    logo_base64 = image_to_base64(LOGO_PATH)
+    if logo_base64:
+        st.markdown(
+            f'''
+            <div class="side-logo">
+                <img src="data:image/png;base64,{logo_base64}" alt="Forus">
+            </div>
+            ''',
+            unsafe_allow_html=True,
+        )
     else:
         st.markdown(
             """
