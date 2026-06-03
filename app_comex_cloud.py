@@ -1631,7 +1631,7 @@ st.markdown(
             </div>
             <div class="section-kicker">Salida final</div>
         </div>
-        <div class="action-card">
+
     ''',
     unsafe_allow_html=True,
 )
@@ -1658,7 +1658,7 @@ if st.button("Procesar archivos", type="primary", disabled=not valid_files):
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-st.markdown('</div></div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown(
     """
