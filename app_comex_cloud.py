@@ -1603,17 +1603,13 @@ if uploaded_files:
             safe_brand = html.escape(brand or "")
             size_label = html.escape(format_file_size(getattr(file, "size", None)))
             file_rows.append(
-                f'''
-                <div class="file-row">
-                    <div class="file-icon">PDF</div>
-                    <div>
-                        <div class="file-name">{safe_name}</div>
-                        <div class="file-meta">{size_label} · Factura comercial</div>
-                    </div>
-                    <div class="brand-badge">{safe_brand}</div>
-                    <div class="status-badge">Listo</div>
-                </div>
-                '''
+                f'<div class="file-row">'
+                f'<div class="file-icon">PDF</div>'
+                f'<div><div class="file-name">{safe_name}</div>'
+                f'<div class="file-meta">{size_label} · Factura comercial</div></div>'
+                f'<div class="brand-badge">{safe_brand}</div>'
+                f'<div class="status-badge">Listo</div>'
+                f'</div>'
             )
         st.markdown('<div class="file-list">' + ''.join(file_rows) + '</div>', unsafe_allow_html=True)
 else:
