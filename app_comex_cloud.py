@@ -1,4 +1,5 @@
 import base64
+import html
 import io
 import re
 from collections import defaultdict
@@ -18,6 +19,15 @@ SUFIJOS_MARCA = {
 }
 
 
+
+
+def format_file_size(size_bytes):
+    if size_bytes is None:
+        return "PDF"
+    mb = size_bytes / (1024 * 1024)
+    if mb >= 1:
+        return f"{mb:.1f} MB"
+    return f"{size_bytes / 1024:.0f} KB"
 
 def image_to_base64(path):
     if not path.exists():
@@ -1251,8 +1261,177 @@ st.markdown(
         line-height: 1.5;
     }
 
+
+    .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .section-head h3 {
+        margin: 0;
+    }
+
+    .section-kicker {
+        color: #0077db;
+        font-size: 0.72rem;
+        font-weight: 900;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+    }
+
+    .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.85rem;
+        margin: 0.9rem 0 1rem;
+    }
+
+    .stat-card {
+        background: linear-gradient(145deg, #ffffff 0%, #f4f8ff 100%);
+        border: 1px solid #cfe0f5;
+        border-radius: 8px;
+        padding: 1rem;
+        min-height: 96px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .stat-label {
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 750;
+    }
+
+    .stat-value {
+        color: var(--ink);
+        font-size: 2rem;
+        font-weight: 900;
+        line-height: 1;
+    }
+
+    .file-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        margin-top: 0.9rem;
+    }
+
+    .file-row {
+        display: grid;
+        grid-template-columns: 42px 1fr auto auto;
+        gap: 0.85rem;
+        align-items: center;
+        background: #ffffff;
+        border: 1px solid #d7e4f3;
+        border-radius: 8px;
+        padding: 0.8rem 0.9rem;
+        box-shadow: 0 10px 24px rgba(8,36,119,0.05);
+    }
+
+    .file-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #082477, #0b48d8);
+        color: #ffffff;
+        display: grid;
+        place-items: center;
+        font-weight: 900;
+        font-size: 0.72rem;
+    }
+
+    .file-name {
+        color: var(--ink);
+        font-weight: 850;
+        overflow-wrap: anywhere;
+    }
+
+    .file-meta {
+        color: var(--muted);
+        font-size: 0.78rem;
+        margin-top: 0.15rem;
+    }
+
+    .brand-badge, .status-badge {
+        border-radius: 999px;
+        padding: 0.42rem 0.7rem;
+        font-size: 0.72rem;
+        font-weight: 900;
+        white-space: nowrap;
+    }
+
+    .brand-badge {
+        background: #edf6ff;
+        border: 1px solid #b9d7ff;
+        color: #0754c8;
+    }
+
+    .status-badge {
+        background: #eaf9ef;
+        border: 1px solid #a6e7bf;
+        color: #08743a;
+    }
+
+    .empty-state {
+        border: 1px dashed #bcd2ee;
+        background: #f9fcff;
+        border-radius: 8px;
+        padding: 1.2rem;
+        color: var(--muted);
+    }
+
+    .action-card {
+        background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 1.2rem;
+        margin-top: 0.7rem;
+    }
+
+    .result-banner {
+        margin: 1rem 0;
+        background: linear-gradient(90deg, #e7f8ee, #f3fff8);
+        border: 1px solid #bcebd0;
+        color: #076735;
+        border-radius: 8px;
+        padding: 1rem 1.1rem;
+        font-weight: 850;
+    }
+
+    .result-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.9rem;
+        margin: 0.9rem 0 1rem;
+    }
+
+    .result-card {
+        background: #ffffff;
+        border: 1px solid #cfe0f5;
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 12px 28px rgba(8,36,119,0.06);
+    }
+
+    .result-card span {
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 750;
+    }
+
+    .result-card strong {
+        display: block;
+        margin-top: 0.4rem;
+        color: var(--ink);
+        font-size: 2.15rem;
+        line-height: 1;
+    }
     @media (max-width: 980px) {
-        .hero-card, .pipeline, .rules-grid, .benefits {
+        .hero-card, .pipeline, .rules-grid, .benefits, .stat-grid, .result-grid {
             grid-template-columns: 1fr;
         }
         .hero-tags {
@@ -1379,7 +1558,16 @@ st.markdown('</div>', unsafe_allow_html=True)
 valid_files = []
 invalid_files = []
 
-st.markdown('<div class="work-card"><h3>2. Archivos cargados</h3>', unsafe_allow_html=True)
+st.markdown(
+    '''
+    <div class="work-card">
+        <div class="section-head">
+            <h3>2. Archivos cargados</h3>
+            <div class="section-kicker">Control de entrada</div>
+        </div>
+    ''',
+    unsafe_allow_html=True,
+)
 
 if uploaded_files:
     for file in uploaded_files:
@@ -1389,35 +1577,62 @@ if uploaded_files:
         else:
             invalid_files.append(file.name)
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("PDFs validos", len(valid_files))
-    col2.metric("PDFs ignorados", len(invalid_files))
-    col3.metric("Marcas", len({get_brand_from_filename(file.name) for file in valid_files}))
+    valid_count = len(valid_files)
+    invalid_count = len(invalid_files)
+    brand_count = len({get_brand_from_filename(file.name) for file in valid_files})
+    st.markdown(
+        f'''
+        <div class="stat-grid">
+            <div class="stat-card"><div class="stat-label">PDFs validos</div><div class="stat-value">{valid_count}</div></div>
+            <div class="stat-card"><div class="stat-label">PDFs ignorados</div><div class="stat-value">{invalid_count}</div></div>
+            <div class="stat-card"><div class="stat-label">Marcas detectadas</div><div class="stat-value">{brand_count}</div></div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
 
     if invalid_files:
         st.warning("Estos archivos se ignoraran porque no terminan en _CLB.pdf, _PRF.pdf o _VNS.pdf:")
         st.write(invalid_files)
 
     if valid_files:
-        st.dataframe(
-            [
-                {
-                    "PDF": file.name,
-                    "Marca": get_brand_from_filename(file.name),
-                    "Estado": "Listo para procesar",
-                }
-                for file in valid_files
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
+        file_rows = []
+        for file in valid_files:
+            brand = get_brand_from_filename(file.name)
+            safe_name = html.escape(file.name)
+            safe_brand = html.escape(brand or "")
+            size_label = html.escape(format_file_size(getattr(file, "size", None)))
+            file_rows.append(
+                f'''
+                <div class="file-row">
+                    <div class="file-icon">PDF</div>
+                    <div>
+                        <div class="file-name">{safe_name}</div>
+                        <div class="file-meta">{size_label} · Factura comercial</div>
+                    </div>
+                    <div class="brand-badge">{safe_brand}</div>
+                    <div class="status-badge">Listo</div>
+                </div>
+                '''
+            )
+        st.markdown('<div class="file-list">' + ''.join(file_rows) + '</div>', unsafe_allow_html=True)
 else:
-    st.write("Carga tus archivos PDF para comenzar el proceso.")
+    st.markdown('<div class="empty-state">Carga tus archivos PDF para comenzar el proceso.</div>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown(
-    '<div class="work-card"><h3>3. Procesar y generar Excel</h3><p>Convierte tus PDFs en un Excel consolidado con las hojas Detalle, Resumen, Facturas y Auditoria_Paginas.</p>',
+    '''
+    <div class="work-card">
+        <div class="section-head">
+            <div>
+                <h3>3. Procesar y generar Excel</h3>
+                <p>Convierte tus PDFs en un Excel consolidado con las hojas Detalle, Resumen, Facturas y Auditoria_Paginas.</p>
+            </div>
+            <div class="section-kicker">Salida final</div>
+        </div>
+        <div class="action-card">
+    ''',
     unsafe_allow_html=True,
 )
 
@@ -1425,10 +1640,16 @@ if st.button("Procesar archivos", type="primary", disabled=not valid_files):
     with st.spinner("Procesando PDFs..."):
         excel_bytes, detail_rows, invoice_rows = build_excel(valid_files)
 
-    st.success("Excel generado correctamente.")
-    col1, col2 = st.columns(2)
-    col1.metric("Facturas", len(invoice_rows))
-    col2.metric("Filas detalle", len(detail_rows))
+    st.markdown('<div class="result-banner">Excel generado correctamente. Ya puedes descargar la salida consolidada.</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'''
+        <div class="result-grid">
+            <div class="result-card"><span>Facturas detectadas</span><strong>{len(invoice_rows)}</strong></div>
+            <div class="result-card"><span>Filas de detalle</span><strong>{len(detail_rows)}</strong></div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
 
     st.download_button(
         "Descargar Excel",
@@ -1437,7 +1658,7 @@ if st.button("Procesar archivos", type="primary", disabled=not valid_files):
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div></div>', unsafe_allow_html=True)
 
 st.markdown(
     """
