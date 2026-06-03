@@ -868,8 +868,17 @@ st.markdown(
         color: var(--ink);
     }
 
+
+    header[data-testid="stHeader"],
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"],
+    #MainMenu,
+    footer {
+        display: none !important;
+        visibility: hidden !important;
+    }
     .block-container {
-        padding-top: 2.1rem;
+        padding-top: 0.9rem;
         padding-bottom: 2.6rem;
         max-width: 1220px;
     }
@@ -880,23 +889,43 @@ st.markdown(
     }
 
     section[data-testid="stSidebar"] > div {
-        padding-top: 2rem;
+        padding-top: 0.75rem;
+    }
+
+    [data-testid="stSidebarHeader"],
+    [data-testid="stSidebarCollapseButton"],
+    button[title="Collapse sidebar"],
+    button[aria-label="Close sidebar"],
+    button[aria-label="Open sidebar"] {
+        display: none !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        min-width: 260px !important;
+        width: 260px !important;
     }
 
     .side-logo {
         background: #ffffff;
         border: 1px solid var(--line);
         border-radius: 8px;
-        padding: 1rem;
+        padding: 0.75rem 0.8rem;
         box-shadow: 0 16px 36px rgba(8,36,119,0.10);
-        margin-bottom: 1.4rem;
+        margin: 0 0 1.15rem;
     }
 
     .side-title {
         color: var(--ink);
         font-weight: 850;
         font-size: 0.84rem;
-        margin: 1.2rem 0 0.45rem;
+        margin: 0.95rem 0 0.45rem;
+    }
+
+    .side-logo img {
+        display: block;
+        width: 100%;
+        max-height: 92px;
+        object-fit: contain;
     }
 
     .side-card {
@@ -1134,6 +1163,33 @@ st.markdown(
         background: transparent;
     }
 
+
+    .upload-wrap div[data-testid="stFileUploader"] button {
+        background: linear-gradient(90deg, #082477, #0b48d8) !important;
+        color: transparent !important;
+        border: 0 !important;
+        border-radius: 8px !important;
+        min-height: 42px;
+        min-width: 155px;
+        box-shadow: 0 12px 26px rgba(8,36,119,0.20);
+        position: relative;
+    }
+
+    .upload-wrap div[data-testid="stFileUploader"] button::after {
+        content: "Sube tu factura";
+        color: #ffffff;
+        font-weight: 850;
+        font-size: 0.88rem;
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+    }
+
+    .upload-wrap div[data-testid="stFileUploader"] small,
+    .upload-wrap div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] {
+        color: var(--muted) !important;
+    }
     .stButton button, .stDownloadButton button {
         background: linear-gradient(90deg, #082477, #0b48d8);
         color: #ffffff;
@@ -1254,8 +1310,7 @@ st.markdown(
             <p>Sube facturas comerciales y genera un Excel ordenado con Detalle, Resumen, Facturas y Auditoria_Paginas.</p>
         </div>
         <div class="hero-tags">
-            <span class="tag">Cajas / Cartons</span>
-            <span class="tag green">Composicion</span>
+            <span class="tag green">Especificaciones completas</span>
             <div class="pdf-symbol">
                 <svg viewBox="0 0 96 96" width="72" height="72" aria-label="PDF">
                     <rect x="24" y="10" width="44" height="62" rx="7" fill="#ffffff" stroke="#bdd4f7"/>
@@ -1299,7 +1354,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="work-card upload-wrap"><h3>1. Subir PDFs</h3>', unsafe_allow_html=True)
+st.markdown('<div class="work-card upload-wrap"><h3>1. Cargar facturas</h3>', unsafe_allow_html=True)
 uploaded_files = st.file_uploader(
     "Subir PDFs",
     type=["pdf"],
