@@ -18,6 +18,14 @@ SUFIJOS_MARCA = {
     "_VNS.pdf": "VANS",
 }
 
+ALLOWED_AUTH_USERS = [
+    "liliana.vitate@forus.pe",
+    "danitza.cupe@forus.pe",
+    "hugo.camara@forus.pe",
+    "romulo.rasilla@forus.pe",
+    "bi@forus.pe",
+]
+
 
 
 
@@ -33,6 +41,77 @@ def image_to_base64(path):
     if not path.exists():
         return None
     return base64.b64encode(path.read_bytes()).decode("utf-8")
+
+
+def clean_composition_text(value):
+    text = clean_text(value)
+    if not text:
+        return None
+    text = re.sub(r"\s+\bFOOTWEAR\b\s*$", "", text, flags=re.I)
+    text = re.sub(r"\bMade\s+in\s*:?\s*[A-Za-z ]+", "", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text).strip(" :-;|")
+    return text or None
+
+
+def get_auth_passwords():
+    try:
+        configured = dict(st.secrets.get("auth", {}))
+    except Exception:
+        configured = {}
+    return {email: str(configured.get(email, "")) for email in ALLOWED_AUTH_USERS}
+
+
+def is_authenticated():
+    return bool(st.session_state.get("auth_ok")) and st.session_state.get("auth_user") in ALLOWED_AUTH_USERS
+
+
+def render_login_screen():
+    logo_base64 = image_to_base64(LOGO_PATH)
+    logo_html = (
+        f'<img src="data:image/png;base64,{logo_base64}" alt="Forus">'
+        if logo_base64
+        else '<div class="login-logo-text">FORUS</div><div class="login-logo-sub">CONSUMER FANATIC</div>'
+    )
+    st.markdown(
+        f'''
+        <div class="login-wrap">
+            <div class="login-card">
+                <div class="login-logo">{logo_html}</div>
+                <div class="eyebrow">ACCESO COMEX</div>
+                <h1>Lectura PDF Forus</h1>
+                <p>Ingresa con tu correo autorizado para procesar facturas y descargar el Excel consolidado.</p>
+            </div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
+
+    with st.form("login_form"):
+        email = st.text_input("Correo Forus", placeholder="nombre.apellido@forus.pe").strip().lower()
+        password = st.text_input("Contrasena", type="password")
+        submitted = st.form_submit_button("Ingresar")
+
+    if submitted:
+        auth_passwords = get_auth_passwords()
+        if email not in ALLOWED_AUTH_USERS:
+            st.error("Este correo no tiene acceso autorizado.")
+            st.stop()
+        expected_password = auth_passwords.get(email)
+        if not expected_password:
+            st.error("Falta configurar la contrasena de este usuario en Streamlit Secrets.")
+            st.stop()
+        if password == expected_password:
+            st.session_state["auth_ok"] = True
+            st.session_state["auth_user"] = email
+            st.rerun()
+        st.error("Correo o contrasena incorrectos.")
+
+    st.stop()
+
+
+def require_login():
+    if not is_authenticated():
+        render_login_screen()
 
 def get_brand_from_filename(filename):
     upper_name = filename.upper()
@@ -298,15 +377,17 @@ def parse_color_qty_line(line):
 
 
 def parse_hs_origin(line):
-    match = re.search(r"HS:\s*([0-9]+).*?Made in:\s*([A-Za-z ]+)", line)
+    match = re.search(
+        r"HS:\s*([0-9]+)\s*(.*?)(?:\bFOOTWEAR\b\s*)?Made\s+in:\s*([A-Za-z ]+)",
+        line,
+        flags=re.I,
+    )
     if not match:
         return None, None, None
     hs_code = match.group(1)
-    made_in = clean_text(match.group(2))
-    composition_text = line[match.end(1):match.start(2)].strip()
-    composition_text = re.sub(r"\bFOOTWEAR\b", "", composition_text).strip(" :-")
-
-    return hs_code, made_in, clean_text(composition_text)
+    composition_text = clean_composition_text(match.group(2))
+    made_in = clean_text(match.group(3))
+    return hs_code, made_in, composition_text
 
 
 def extract_items_from_invoice_text(text, header, start_page):
@@ -511,6 +592,15 @@ def parse_vans_items_from_tables(tables, header, start_page):
         unit_price_values = split_lines(row[7])
         amount_values = split_lines(row[8])
 
+        composition_index = next(
+            (
+                idx for idx, header_name in enumerate(table_header)
+                if "COMPOSITION" in header_name.upper() or "MATERIAL" in header_name.upper()
+            ),
+            None,
+        )
+        composition_values = split_lines(row[composition_index]) if composition_index is not None and composition_index < len(row) else []
+
         count = max(
             len(hs_values),
             len(origin_values),
@@ -539,7 +629,7 @@ def parse_vans_items_from_tables(tables, header, start_page):
                 "Brand": "VANS",
                 "Style": style_values[idx] if idx < len(style_values) else None,
                 "Style Description": style_name_chunks[idx] if idx < len(style_name_chunks) else None,
-                "Composition": None,
+                "Composition": clean_composition_text(composition_values[idx]) if idx < len(composition_values) else None,
                 "Color": color_values[idx] if idx < len(color_values) else None,
                 "Color Description": color_values[idx] if idx < len(color_values) else None,
                 "Size": size_values[idx] if idx < len(size_values) else None,
@@ -1430,6 +1520,98 @@ st.markdown(
         font-size: 2.15rem;
         line-height: 1;
     }
+
+
+    .login-wrap {
+        min-height: 72vh;
+        display: grid;
+        place-items: center;
+        padding: 2rem 1rem 0;
+    }
+
+    .login-card {
+        width: min(520px, 100%);
+        background: rgba(255,255,255,0.96);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 28px 70px rgba(8,36,119,0.12);
+        text-align: left;
+    }
+
+    .login-logo {
+        width: 220px;
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 1.4rem;
+        box-shadow: 0 12px 26px rgba(8,36,119,0.08);
+    }
+
+    .login-logo img {
+        width: 100%;
+        display: block;
+    }
+
+    .login-logo-text {
+        color: var(--forus-blue);
+        font-size: 2rem;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+    }
+
+    .login-logo-sub {
+        color: var(--forus-blue);
+        font-size: 0.58rem;
+        letter-spacing: 0.28em;
+    }
+
+    .login-card h1 {
+        margin: 0.35rem 0 0.6rem;
+        color: var(--ink);
+        font-size: 2rem;
+        letter-spacing: 0;
+    }
+
+    .login-card p {
+        color: var(--muted);
+        line-height: 1.6;
+        margin-bottom: 0;
+    }
+
+    div[data-testid="stForm"] {
+        max-width: 520px;
+        margin: -1rem auto 0;
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 1.4rem;
+        box-shadow: 0 18px 45px rgba(8,36,119,0.08);
+    }
+
+    div[data-testid="stForm"] button {
+        width: 100%;
+        background: linear-gradient(90deg, #082477, #0b48d8) !important;
+        color: #ffffff !important;
+        border: 0 !important;
+        border-radius: 8px !important;
+        min-height: 44px;
+        font-weight: 900;
+    }
+
+    .user-chip {
+        background: #eef6ff;
+        border: 1px solid #bdd7ff;
+        color: var(--forus-blue);
+        border-radius: 8px;
+        padding: 0.7rem 0.8rem;
+        font-size: 0.78rem;
+        font-weight: 850;
+        overflow-wrap: anywhere;
+        margin-bottom: 0.8rem;
+    }
+
     @media (max-width: 980px) {
         .hero-card, .pipeline, .rules-grid, .benefits, .stat-grid, .result-grid {
             grid-template-columns: 1fr;
@@ -1464,6 +1646,12 @@ with st.sidebar:
             """,
             unsafe_allow_html=True,
         )
+
+    st.markdown(f'<div class="user-chip">Sesion: {html.escape(st.session_state.get("auth_user", ""))}</div>', unsafe_allow_html=True)
+    if st.button("Cerrar sesion"):
+        st.session_state.pop("auth_ok", None)
+        st.session_state.pop("auth_user", None)
+        st.rerun()
 
     st.markdown('<div class="side-title">Sitio destino</div>', unsafe_allow_html=True)
     st.selectbox("Sitio destino", ["Comex Forus"], label_visibility="collapsed")
