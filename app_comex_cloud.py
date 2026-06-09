@@ -73,23 +73,73 @@ def render_login_screen():
         else '<div class="login-logo-text">FORUS</div><div class="login-logo-sub">CONSUMER FANATIC</div>'
     )
     st.markdown(
-        f'''
-        <div class="login-wrap">
-            <div class="login-card">
+        f"""
+        <style>
+        .stApp {{
+            background: #142238 !important;
+        }}
+        header[data-testid="stHeader"],
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"],
+        section[data-testid="stSidebar"],
+        #MainMenu,
+        footer {{
+            display: none !important;
+            visibility: hidden !important;
+        }}
+        .block-container {{
+            max-width: 560px !important;
+            padding-top: 4.2rem !important;
+            padding-bottom: 2rem !important;
+        }}
+        div[data-testid="stForm"] {{
+            max-width: 448px !important;
+            margin: 0 auto !important;
+            border-radius: 8px !important;
+            border: 1px solid #d8dde8 !important;
+            padding: 1.25rem !important;
+            box-shadow: none !important;
+        }}
+        div[data-testid="stForm"] label {{
+            color: #081a35 !important;
+            font-weight: 650 !important;
+        }}
+        div[data-testid="stForm"] input {{
+            min-height: 42px !important;
+        }}
+        div[data-testid="stForm"] button {{
+            width: auto !important;
+            min-width: 92px !important;
+            background: #0b4d88 !important;
+            border-radius: 8px !important;
+            box-shadow: none !important;
+        }}
+        </style>
+        <div class="login-shell">
+            <div class="login-hero">
                 <div class="login-logo">{logo_html}</div>
-                <div class="eyebrow">ACCESO COMEX</div>
-                <h1>Lectura PDF Forus</h1>
-                <p>Ingresa con tu correo autorizado para procesar facturas y descargar el Excel consolidado.</p>
+                <div class="login-title">Lectura PDF Forus - Comex</div>
+                <div class="login-subtitle">Sistema de lectura de documentos</div>
             </div>
         </div>
-        ''',
+        """,
         unsafe_allow_html=True,
     )
 
     with st.form("login_form"):
-        email = st.text_input("Correo Forus", placeholder="nombre.apellido@forus.pe").strip().lower()
+        email = st.text_input("Correo electronico", placeholder="hugo.camara@forus.pe").strip().lower()
         password = st.text_input("Contrasena", type="password")
         submitted = st.form_submit_button("Ingresar")
+
+    st.markdown(
+        """
+        <div class="login-footer">
+            Sistema exclusivo para personal autorizado<br>
+            Lectura de documentos Comex Forus
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if submitted:
         auth_passwords = get_auth_passwords()
@@ -1522,6 +1572,66 @@ st.markdown(
     }
 
 
+
+
+    .login-shell {
+        width: 448px;
+        max-width: 100%;
+        margin: 0 auto;
+        background: #ffffff;
+        border-radius: 8px 8px 0 0;
+        overflow: hidden;
+        box-shadow: 0 26px 70px rgba(0,0,0,0.22);
+    }
+
+    .login-hero {
+        background: linear-gradient(135deg, #2d6bff 0%, #0f53f5 100%);
+        padding: 2rem 1.8rem 2.2rem;
+        text-align: center;
+        color: #ffffff;
+    }
+
+    .login-hero .login-logo {
+        width: 180px;
+        margin: 0 auto 1.55rem;
+        background: #ffffff;
+        border: 0;
+        border-radius: 8px;
+        padding: 0.55rem 0.8rem;
+        box-shadow: none;
+    }
+
+    .login-hero .login-logo img {
+        display: block;
+        width: 100%;
+        height: auto;
+    }
+
+    .login-title {
+        font-size: 1.75rem;
+        font-weight: 950;
+        letter-spacing: 0;
+        line-height: 1.16;
+    }
+
+    .login-subtitle {
+        margin-top: 0.75rem;
+        font-size: 0.95rem;
+        font-weight: 850;
+        color: #eaf2ff;
+    }
+
+    .login-footer {
+        width: 448px;
+        max-width: 100%;
+        margin: 1.6rem auto 0;
+        text-align: center;
+        color: #eaf2ff;
+        font-weight: 850;
+        font-size: 0.82rem;
+        line-height: 1.8;
+    }
+
     .login-wrap {
         min-height: 72vh;
         display: grid;
@@ -1624,6 +1734,8 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+require_login()
 
 with st.sidebar:
     logo_base64 = image_to_base64(LOGO_PATH)
