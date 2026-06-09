@@ -1722,6 +1722,249 @@ st.markdown(
         margin-bottom: 0.8rem;
     }
 
+
+
+    /* Modern Comex UI polish */
+    .stApp {
+        background:
+            radial-gradient(circle at 83% 8%, rgba(20,168,232,0.20), transparent 30%),
+            radial-gradient(circle at 12% 18%, rgba(11,72,216,0.10), transparent 28%),
+            linear-gradient(135deg, #f4f8fd 0%, #ffffff 48%, #eef6ff 100%);
+    }
+
+    .block-container {
+        max-width: 1160px;
+        padding-top: 1rem;
+    }
+
+    .app-shell {
+        gap: 1rem;
+    }
+
+    .hero-card {
+        position: relative;
+        overflow: hidden;
+        background:
+            radial-gradient(circle at 84% 34%, rgba(20,168,232,0.34), transparent 26%),
+            linear-gradient(135deg, #061938 0%, #082477 54%, #0b48d8 100%);
+        border: 0;
+        color: #ffffff;
+        padding: 2rem 2.15rem;
+        min-height: 230px;
+        box-shadow: 0 28px 70px rgba(8,36,119,0.20);
+    }
+
+    .hero-card::after {
+        content: "";
+        position: absolute;
+        inset: auto -70px -115px auto;
+        width: 280px;
+        height: 280px;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 50%;
+        background: rgba(255,255,255,0.05);
+    }
+
+    .hero-card > div {
+        position: relative;
+        z-index: 1;
+    }
+
+    .hero-card .eyebrow {
+        color: #82d9ff;
+        font-size: 0.7rem;
+        letter-spacing: 0.34em;
+        margin-bottom: 0.9rem;
+    }
+
+    .hero-card h1 {
+        color: #ffffff;
+        font-size: clamp(2rem, 3vw, 3rem);
+        max-width: 760px;
+    }
+
+    .hero-card p {
+        color: #dceaff;
+        font-size: 1.02rem;
+        max-width: 660px;
+    }
+
+    .hero-tags {
+        align-self: stretch;
+        justify-content: center;
+        flex-direction: column;
+    }
+
+    .hero-tags .tag {
+        background: rgba(255,255,255,0.13);
+        border-color: rgba(255,255,255,0.28);
+        color: #ffffff;
+        backdrop-filter: blur(8px);
+    }
+
+    .hero-tags .tag.green {
+        background: rgba(234,249,239,0.16);
+        border-color: rgba(166,231,191,0.45);
+        color: #e9fff1;
+    }
+
+    .pdf-symbol {
+        width: 118px;
+        height: 118px;
+        background: rgba(255,255,255,0.14);
+        border-color: rgba(255,255,255,0.24);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.22);
+        backdrop-filter: blur(10px);
+    }
+
+    .pdf-symbol svg {
+        transform: scale(1.08);
+    }
+
+    .pipeline {
+        margin-top: -1.7rem;
+        position: relative;
+        z-index: 2;
+        background: rgba(255,255,255,0.86);
+        backdrop-filter: blur(14px);
+        border-color: rgba(189,215,255,0.78);
+        box-shadow: 0 22px 55px rgba(8,36,119,0.12);
+    }
+
+    .step-card {
+        min-height: 86px;
+        background: rgba(255,255,255,0.92);
+        border-color: #d8e6f8;
+        box-shadow: 0 10px 24px rgba(8,36,119,0.05);
+    }
+
+    .step-card.active {
+        background: linear-gradient(135deg, #eaf4ff, #ffffff);
+        border-color: #76adff;
+    }
+
+    .step-card.ok {
+        background: linear-gradient(135deg, #eaf9ef, #ffffff);
+        border-color: #9ee2b7;
+    }
+
+    .step-card.warn {
+        background: linear-gradient(135deg, #fff4d8, #ffffff);
+        border-color: #ffc566;
+    }
+
+    .work-card {
+        background: rgba(255,255,255,0.92);
+        border-color: rgba(203,219,242,0.90);
+        box-shadow: 0 20px 56px rgba(8,36,119,0.08);
+    }
+
+    .work-card h2 {
+        font-size: 2rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .rules-grid {
+        gap: 0.9rem;
+    }
+
+    .rule-chip {
+        min-height: 92px;
+        background: linear-gradient(145deg, #ffffff, #eef6ff);
+        border-color: #bdd7ff;
+        box-shadow: 0 12px 28px rgba(8,36,119,0.06);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .rule-chip::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #082477, #14a8e8);
+    }
+
+    .upload-wrap {
+        background:
+            linear-gradient(135deg, rgba(8,36,119,0.96), rgba(11,72,216,0.92)),
+            #082477;
+        border: 0;
+        color: #ffffff;
+        box-shadow: 0 26px 70px rgba(8,36,119,0.20);
+    }
+
+    .upload-wrap h3 {
+        color: #ffffff;
+        font-size: 1.45rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .upload-wrap h3::after {
+        content: "Arrastra o selecciona tus facturas comerciales";
+        display: block;
+        margin-top: 0.45rem;
+        color: #cfe2ff;
+        font-size: 0.92rem;
+        font-weight: 600;
+    }
+
+    .upload-wrap div[data-testid="stFileUploader"] {
+        min-height: 132px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px dashed rgba(255,255,255,0.48);
+        background: rgba(255,255,255,0.10);
+        border-radius: 8px;
+    }
+
+    .upload-wrap div[data-testid="stFileUploader"] section {
+        color: #ffffff;
+    }
+
+    .upload-wrap div[data-testid="stFileUploader"] button {
+        min-width: 190px;
+        min-height: 48px;
+        background: #ffffff !important;
+        box-shadow: 0 18px 38px rgba(0,0,0,0.18);
+    }
+
+    .upload-wrap div[data-testid="stFileUploader"] button::after {
+        content: "Sube tu factura";
+        color: #082477;
+        font-size: 0.94rem;
+    }
+
+    .section-head h3 {
+        font-size: 1.55rem;
+    }
+
+    .empty-state {
+        background: linear-gradient(145deg, #ffffff, #f3f8ff);
+        border-color: #b9d7ff;
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+    }
+
+    .stat-card, .file-row, .result-card, .benefit {
+        box-shadow: 0 16px 36px rgba(8,36,119,0.07);
+    }
+
+    .benefit {
+        min-height: 116px;
+        background: linear-gradient(145deg, #ffffff, #f7fbff);
+    }
+
+    .benefit b {
+        display: block;
+        font-size: 0.98rem;
+        margin-bottom: 0.35rem;
+    }
+
     @media (max-width: 980px) {
         .hero-card, .pipeline, .rules-grid, .benefits, .stat-grid, .result-grid {
             grid-template-columns: 1fr;
@@ -1835,7 +2078,7 @@ st.markdown(
     """
     <div class="work-card">
         <h2>Preparar lectura de documentos</h2>
-        <p>La app reconoce cada marca por el nombre del archivo y entrega siempre la misma estructura de salida.</p>
+        <p>El sistema identifica la marca por el nombre del archivo y conserva columnas clave como composici?n, cajas, HS y origen.</p>
         <div class="rules-grid">
             <div class="rule-chip"><b>Columbia / Mountain</b>Archivos terminados en _CLB.pdf</div>
             <div class="rule-chip"><b>Parfois</b>Archivos terminados en _PRF.pdf</div>
