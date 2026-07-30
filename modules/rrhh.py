@@ -894,20 +894,12 @@ def proceso_activo():
 
 
 def render_sidebar():
-    """Panel lateral del modulo: selector de pantalla y la ayuda de cada una."""
-    proceso_activo()
+    """Panel lateral del modulo: la ayuda de la pantalla elegida arriba.
 
-    with st.sidebar:
-        st.markdown('<div class="side-title">Proceso</div>', unsafe_allow_html=True)
-        st.radio(
-            "Proceso",
-            list(PROCESOS),
-            format_func=lambda clave: PROCESOS[clave],
-            key="rrhh_proceso",
-            label_visibility="collapsed",
-        )
-
-    if st.session_state["rrhh_proceso"] == "alquileres":
+    Que pantalla se muestra lo decide el desplegable "Sitio destino" del panel
+    comun, para llegar a cualquiera de las dos en un solo paso.
+    """
+    if proceso_activo() == "alquileres":
         alquileres.render_sidebar()
     else:
         render_sidebar_boletas()

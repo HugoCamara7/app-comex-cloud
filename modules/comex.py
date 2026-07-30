@@ -802,9 +802,6 @@ def build_excel(files):
 def render_sidebar():
     """Panel lateral propio del modulo Comex."""
     with st.sidebar:
-        st.markdown('<div class="side-title">Sitio destino</div>', unsafe_allow_html=True)
-        st.selectbox("Sitio destino", ["Comex Forus"], label_visibility="collapsed")
-
         st.markdown('<div class="side-title">Marca(s) permitidas</div>', unsafe_allow_html=True)
         st.markdown(
             """
