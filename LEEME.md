@@ -103,26 +103,27 @@ que "comisión" en ingresos y "comisión sobre flujo" en descuentos no se
 confunden. Valida `ingresos − descuentos = neto`.
 
 **Facturas de alquiler** → `control_alquileres.xlsx`
-Es el control que pediste. Hoja **Control**, una fila por concepto:
+Es el control que pediste. La hoja **Control** trae **solo tus nueve columnas,
+en tu orden**, una fila por concepto, para copiar y pegar sin borrar nada:
 
-| Fecha | Contrato | Local / Tienda | MES | Concepto | SOLES | DOLARES | # Factura | RAZON SOCIAL | FECHA DE ENTREGA |
+| Fecha | Tienda | MES | Concepto | SOLES | DOLARES | # Factura | RAZON SOCIAL | FECHA DE ENTREGA |
 
-Detrás van columnas de apoyo: tipo de documento, periodo desde/hasta, importe
-con IGV, referencia, RUC del emisor, archivo, página y observaciones. Además
-las hojas **Facturas** (una fila por comprobante, para cuadrar), **Resumen** y
-**Auditoría**.
+Las demás hojas: **Control ampliado** (las mismas filas más contrato, local,
+periodo, importe con IGV, referencia, RUC, archivo, página y observaciones),
+**Facturas** (una por comprobante, con el cuadre y los duplicados),
+**Resumen** y **Auditoría**.
 
 Cómo sale cada columna:
 
 - **Fecha** — fecha de emisión del comprobante.
-- **Contrato** — `N. CONTRATO`, `Número de Contrato`, `NRO. DE CONTRATO`.
-  En Jockey Plaza está dentro de la observación y también se saca.
-- **Local / Tienda** — `LOCAL`, `Nombre de Contrato`. Es lo que trae la marca
-  (`S146 HUSH PUPPIES`, `L-149/150/151 DHOUSE`, `HUSH PUPPIES PAQP`).
+- **Tienda** — el local cuando la factura lo trae (`S146 HUSH PUPPIES`,
+  `L-149/150/151 DHOUSE`, `HUSH PUPPIES PAQP`) y, cuando no, el número de
+  contrato (`9244`) o la referencia del local (`LCS 1070`). En la hoja *Control
+  ampliado* van contrato y local en columnas separadas.
 - **MES** — mes del periodo facturado, sacado del propio concepto
   (`01.06.2026 - 30.06.2026` → JUNIO). Si el concepto no lo trae, se busca
   escrito en el detalle (`JUNIO 2026`) y, en último caso, se usa el mes de
-  emisión. **Siempre queda anotado en Observaciones de dónde salió.**
+  emisión. **De dónde salió queda anotado en la hoja Control ampliado.**
 - **Concepto** — la descripción limpia, sin código, cantidad, unidad ni fechas.
 - **SOLES / DOLARES** — el importe **sin IGV**, en la columna de su moneda.
 - **# Factura** — serie y correlativo normalizados a `F004-00332954`.
@@ -147,7 +148,7 @@ aunque sí los usa para completar el nombre del local.
 ## 4. Diff exacto contra `2a25d7d`
 
 El original era un archivo de **2.213 líneas y 36 funciones**. Ahora son
-**9 archivos, 5.365 líneas y 127 funciones**.
+**9 archivos, 5.381 líneas y 127 funciones**.
 
 ### Funciones heredadas del Comex: 36 de 36 conservadas
 
@@ -195,8 +196,8 @@ compartida). Todo el motor de lectura de Comex — `process_columbia_pdf`,
 | `forus_parsing.py` | 483 | 26 | Utilidades de parseo compartidas |
 | `modules/comex.py` | 1.010 | 27 | Comex, sin cambios de comportamiento |
 | `modules/contabilidad.py` | 740 | 16 | Comprobantes de proveedor → Excel |
-| `modules/rrhh.py` | 923 | 17 | Boletas de pago y router de RRHH |
-| `modules/alquileres.py` | 682 | 18 | Facturas de arriendo → control |
+| `modules/rrhh.py` | 921 | 17 | Boletas de pago y router de RRHH |
+| `modules/alquileres.py` | 700 | 18 | Facturas de arriendo → control |
 
 ---
 
@@ -244,12 +245,11 @@ el alias `LOCAL` que acertaba dentro de "RENTA MINIMA **LOCAL** DEL 01/07/2026".
 
 ## 6. Lo que NO se hizo, y por qué
 
-1. **Local / Tienda queda vacío en Mall del Sur y Real Plaza.** Esas dos
-   facturas no traen el local con una etiqueta propia: en Mall del Sur está
-   dentro de la descripción (`CON REFERENCIA A: LCS 1070`, que sí queda en la
-   columna *Referencia*) y en Real Plaza como encabezado de una tabla cuyo
-   valor cae en otra línea. Preferí dejarlo vacío antes que llenarlo con texto
-   equivocado. El contrato y el N° de factura sí salen en ambas.
+1. **Tienda queda vacía en la factura de Real Plaza.** Esa factura no trae ni
+   contrato ni local con una etiqueta propia: el `LOCAL COMERCIAL` es un
+   encabezado de tabla cuyo valor cae en otra línea. Preferí dejarla vacía
+   antes que llenarla con texto equivocado. En las otras seis sale. El N° de
+   factura y la razón social sí salen en las siete.
 
 2. **FECHA DE ENTREGA siempre vacía.** No está en ningún PDF.
 
