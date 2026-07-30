@@ -750,10 +750,8 @@ ICONO_ALQUILERES = """
 </svg>
 """
 
-COLUMNAS_VISTA_PREVIA = [
-    "Fecha", "Contrato", "Local / Tienda", "MES", "Concepto",
-    "SOLES", "DOLARES", "# Factura", "RAZON SOCIAL", "Observaciones",
-]
+# Se muestra la hoja Control tal cual saldra en el Excel, sin columnas extra.
+COLUMNAS_VISTA_PREVIA = alquileres.CONTROL_COLUMNS
 
 
 def render_alquileres():
@@ -827,7 +825,7 @@ def render_alquileres():
     open_card(
         "3. Procesar y generar Excel",
         kicker="Salida final",
-        texto="Genera el Excel con las hojas Control, Facturas, Resumen y Auditoria.",
+        texto="Genera el Excel con la hoja Control lista para pegar, mas Control ampliado, Facturas, Resumen y Auditoria.",
     )
 
     if st.button(
@@ -880,9 +878,9 @@ def render_alquileres():
     close_card()
 
     render_benefits([
-        ("Una fila por concepto", "Renta minima, fondo de promociones y gastos comunes salen separados, como en tu control."),
+        ("Listo para pegar", "La hoja Control trae solo tus columnas, en tu orden, sin nada que borrar."),
         ("Importe verificado", "La columna del valor sin IGV se elige comprobando que la suma cuadre con la factura."),
-        ("Contrato en vez de tienda", "Se extrae el numero de contrato y, cuando la factura lo trae, el local."),
+        ("Tienda o contrato", "La columna Tienda toma el local y, cuando la factura no lo trae, el numero de contrato."),
     ])
 
     st.markdown("</div>", unsafe_allow_html=True)

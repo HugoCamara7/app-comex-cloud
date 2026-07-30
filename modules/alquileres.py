@@ -34,11 +34,11 @@ from forus_parsing import (
     split_lines,
 )
 
-# Columnas del control, en el orden pedido. Las de apoyo van detras.
+# Hoja Control: exactamente las columnas del Excel de Hugo, en su orden, para
+# poder pegarlas directo. Todo lo demas va a la hoja de al lado.
 CONTROL_COLUMNS = [
     "Fecha",
-    "Contrato",
-    "Local / Tienda",
+    "Tienda",
     "MES",
     "Concepto",
     "SOLES",
@@ -46,6 +46,12 @@ CONTROL_COLUMNS = [
     "# Factura",
     "RAZON SOCIAL",
     "FECHA DE ENTREGA",
+]
+
+# Las mismas filas con todo lo que se pudo leer, para revisar y auditar.
+CONTROL_AMPLIADO_COLUMNS = CONTROL_COLUMNS + [
+    "Contrato",
+    "Local",
     "Tipo Documento",
     "Periodo Desde",
     "Periodo Hasta",
@@ -387,7 +393,7 @@ def extraer_cabecera(texto, pagina_inicial):
         ], max_chars=30, requiere_separador=True),
         "Local / Tienda": local,
         "Referencia": find_label_value(texto, [
-            "OBSERVACION", "CON REFERENCIA A", "NRO. INTERNO",
+            "CON REFERENCIA A", "OBSERVACION",
         ], max_chars=60),
         "Moneda": detect_currency_document(texto),
         "Op. Gravadas": gravadas,
@@ -419,6 +425,14 @@ def construir_filas_control(cabecera, filas_detalle, nombre_archivo, mes_documen
         if len(fila["numeros"]) >= abs(posicion)
     )
 
+    # La columna Tienda lleva el local cuando la factura lo trae y, si no, el
+    # numero de contrato: es lo que identifica el punto en cada proveedor.
+    tienda = (
+        cabecera.get("Local / Tienda")
+        or cabecera.get("Contrato")
+        or cabecera.get("Referencia")
+    )
+
     control = []
     for fila in filas_detalle:
         numeros = fila["numeros"]
@@ -447,8 +461,7 @@ def construir_filas_control(cabecera, filas_detalle, nombre_archivo, mes_documen
 
         control.append({
             "Fecha": cabecera.get("Fecha"),
-            "Contrato": cabecera.get("Contrato"),
-            "Local / Tienda": cabecera.get("Local / Tienda"),
+            "Tienda": tienda,
             "MES": mes,
             "Concepto": fila["concepto"],
             "SOLES": valor if moneda == "PEN" else None,
@@ -456,6 +469,8 @@ def construir_filas_control(cabecera, filas_detalle, nombre_archivo, mes_documen
             "# Factura": cabecera.get("# Factura"),
             "RAZON SOCIAL": cabecera.get("RAZON SOCIAL"),
             "FECHA DE ENTREGA": None,  # no viene en el PDF, se completa a mano
+            "Contrato": cabecera.get("Contrato"),
+            "Local": cabecera.get("Local / Tienda"),
             "Tipo Documento": cabecera.get("Tipo Documento"),
             "Periodo Desde": fila["desde"],
             "Periodo Hasta": fila["hasta"],
@@ -640,6 +655,9 @@ def build_excel(files):
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         pd.DataFrame(control).reindex(columns=CONTROL_COLUMNS).to_excel(
             writer, index=False, sheet_name="Control",
+        )
+        pd.DataFrame(control).reindex(columns=CONTROL_AMPLIADO_COLUMNS).to_excel(
+            writer, index=False, sheet_name="Control ampliado",
         )
         pd.DataFrame(facturas).reindex(columns=FACTURA_COLUMNS).to_excel(
             writer, index=False, sheet_name="Facturas",
