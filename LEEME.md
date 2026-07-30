@@ -64,12 +64,25 @@ ruc = "20514811271"
 
 Claves válidas: `comex`, `contabilidad`, `rrhh`, o `todos`.
 
-**Si no configuras `[modulos]`, nadie pierde acceso**: quien no aparezca en la
-lista conserva justo lo que tenía hasta ahora, que es Comex. Los módulos
-nuevos quedan invisibles hasta que asignes permisos.
+**Sin la sección `[modulos]` solo se ve Comex.** Es el valor por defecto, para
+que nadie pierda el acceso que ya tenía al subir esta versión. Los módulos
+nuevos permanecen invisibles hasta que asignes permisos: **este paso hay que
+hacerlo o Contabilidad y Recursos Humanos no aparecerán.**
 
-El menú lateral solo muestra los módulos permitidos. Quien tenga uno solo no
-ve menú, igual que hoy.
+### Cómo se navega
+
+En el panel lateral, el desplegable **Sitio destino** lleva a cualquiera de las
+cuatro pantallas en un solo paso:
+
+- Comex
+- Contabilidad
+- Recursos Humanos - Boletas de pago
+- Recursos Humanos - Arriendos
+
+Solo aparecen las que permita el usuario, y quien tenga una sola no ve
+desplegable. El antiguo "Sitio destino" de Comex —un desplegable con la única
+opción "Comex Forus", que no hacía nada— se eliminó: ese hueco lo ocupa ahora
+este selector.
 
 **En el ZIP no va ningún `secrets.toml`.** Las contraseñas se escriben
 únicamente en el panel de Streamlit Cloud.
@@ -92,7 +105,7 @@ Valida que `gravadas + IGV` cuadre con el importe total.
 
 ### Recursos Humanos — dos pantallas
 
-Se elige en el panel lateral, en *Proceso*:
+Ambas se eligen directamente en *Sitio destino*:
 
 **Boletas de pago** → `salida_rrhh_boletas.xlsx`
 Hojas **Boletas** (45 columnas: trabajador, días, 9 ingresos, 10 descuentos,
@@ -167,7 +180,9 @@ Las dos modificadas:
   `current_user_modules()`.
 
 `split_lines` se movió de Comex a `forus_parsing.py` (mismo cuerpo, ahora
-compartida). Todo el motor de lectura de Comex — `process_columbia_pdf`,
+compartida). Del panel lateral de Comex se quitaron dos líneas: el desplegable
+muerto "Sitio destino", cuyo sitio ocupa el selector del portal. Todo el motor
+de lectura de Comex — `process_columbia_pdf`,
 `process_vans_pdf`, `process_parfois_pdf`, `extract_items_from_invoice_text`,
 `parse_money`, `parse_quantity` y los demás — quedó intacto.
 
