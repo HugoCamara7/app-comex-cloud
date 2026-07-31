@@ -139,6 +139,8 @@ PAGOS_AMPLIADO_COLUMNS = PAGOS_COLUMNS + [
     "Afecto a",
     "Motivo",
     "Codigo Detraccion",
+    "Concepto Detraccion",
+    "Origen Tasa",
     "Op. Gravadas",
     "IGV",
     "Orden de Compra",
@@ -563,6 +565,7 @@ def process_pdf(uploaded_file, parametros=None):
             parametros=parametros,
             igv=cabecera.get("IGV"),
             tipo_documento=cabecera.get("Tipo Documento"),
+            glosa=cabecera.get("Glosa"),
         ))
         cabecera.update(construir_fila_pago(cabecera))
 
@@ -884,6 +887,24 @@ def render_pagos():
         ],
         variante="acct",
     )
+
+    with st.expander("Tabla de tasas de detraccion por codigo"):
+        st.caption(
+            "Solo se usa cuando el comprobante no imprime el porcentaje. Si lo "
+            "imprime, manda siempre el del documento. Las tasas las cambia SUNAT "
+            "por resolucion: confirmalas con Contabilidad y corrigelas desde los "
+            "secrets, en la seccion [detraccion_tasas], sin tocar el codigo."
+        )
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"Codigo": codigo, "Bien o servicio": nombre, "Tasa %": tasa}
+                    for codigo, (nombre, tasa) in sorted(tributario.get_tasas().items())
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     uploaded_files = _cargar_comprobantes("pagos", "1. Cargar comprobantes")
 
