@@ -856,7 +856,12 @@ def avisar_no_leidos(archivos, documentos):
         return
 
     disponible, motivo = forus_ocr.estado_ocr()
-    aviso_ocr = "" if disponible else f" El OCR no esta activo: {motivo}."
+    if not disponible:
+        aviso_ocr = f" El OCR no esta activo: {motivo}."
+    elif forus_ocr.ultimo_error():
+        aviso_ocr = f" El OCR fallo: {forus_ocr.ultimo_error()}."
+    else:
+        aviso_ocr = ""
 
     render_banner(
         f"{len(no_leidos)} de {len(archivos)} archivo(s) no dieron ningun comprobante. "
