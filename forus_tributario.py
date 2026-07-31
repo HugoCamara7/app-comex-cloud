@@ -20,10 +20,14 @@ import re
 
 import streamlit as st
 
-from forus_parsing import normalize, parse_amount
+from forus_parsing import find_money, normalize, parse_amount
 
 UMBRAL_DEFECTO = 700.0
 TASA_RETENCION_DEFECTO = 3.0
+
+# Tope de plausibilidad para una retencion leida del comprobante. La del IGV es
+# del 3%; cualquier cosa muy por encima es que se leyo otro numero.
+TASA_RETENCION_MAXIMA = 6.0
 
 # ---------------------------------------------------------------------------
 # Tabla de tasas por codigo de bien o servicio.
@@ -196,12 +200,35 @@ def buscar_codigo_por_concepto(glosa):
     return None
 
 
+# Leyendas que solo aparecen cuando la operacion esta de verdad sujeta al SPOT.
+LEYENDAS_SPOT = (
+    "SPOT",
+    "SISTEMA DE PAGO DE OBLIGACIONES TRIBUTARIAS",
+    "DECRETO LEGISLATIVO 940",
+    "D.L. 940",
+    "SUJETA A DETRACCION",
+    "SUJETO A DETRACCION",
+    "AFECTO A LA DETRACCION",
+    "PORCENTAJE DETRACCION",
+    "PORCENTAJE DE DETRACCION",
+    "CODIGO DETRACCION",
+)
+
+
 def detectar_detraccion(texto):
     """(sujeta, porcentaje, codigo) segun lo que declare el propio comprobante."""
     plano = normalize(texto or "")
     sujeta = any(senal in plano for senal in SENALES_DETRACCION)
     if not sujeta:
         return False, None, None
+
+    # Muchas facturas listan "Detraccion: S/ 0.00" en el pie de totales aunque
+    # la operacion no este sujeta. Con importe cero y sin ninguna leyenda del
+    # SPOT, esa palabra no significa que haya detraccion.
+    if not any(leyenda in plano for leyenda in LEYENDAS_SPOT):
+        importe = find_money(texto, ["DETRACCION"])
+        if importe is not None and importe == 0:
+            return False, None, None
 
     # Sobre el texto normalizado: si no, "Código" con tilde no casa nunca.
     codigo = None
@@ -257,7 +284,7 @@ def importe_en_soles(total, moneda, tipo_cambio):
 
 
 def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros=None,
-            igv=None, tipo_documento=None, glosa=None):
+            igv=None, tipo_documento=None, glosa=None, monto_retencion=None):
     """Decide si la factura va con detraccion, con retencion o con ninguna.
 
     Devuelve las columnas listas para el Excel, incluido el motivo, para que no
@@ -395,7 +422,30 @@ def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros
             "Importe en Soles": en_soles,
         }
 
-    # 4. Pasa el umbral: retencion, salvo que el proveedor este excluido.
+    # 4. Si el comprobante ya trae la retencion calculada, se respeta: es el
+    # proveedor quien sabe si nos toca retenerle y por cuanto. Pero solo si el
+    # importe es plausible: al leer un escaneo es facil confundir la retencion
+    # con el importe a pagar, que esta justo al lado.
+    if monto_retencion and total and not (
+        0.005 <= monto_retencion / total <= TASA_RETENCION_MAXIMA / 100
+    ):
+        monto_retencion = None
+
+    if monto_retencion:
+        porcentaje = round(monto_retencion / total * 100, 2) if total else None
+        return {
+            "Afecto a": RETENCION,
+            "Motivo": "El comprobante indica la retencion ya calculada",
+            "Codigo Detraccion": None,
+            "Concepto Detraccion": None,
+            "Origen Tasa": "comprobante",
+            "% Aplicado": porcentaje,
+            "Monto Detraccion/Retencion": monto_retencion,
+            "Neto a Pagar": round(total - monto_retencion, 2),
+            "Importe en Soles": en_soles,
+        }
+
+    # 5. Pasa el umbral: retencion, salvo que el proveedor este excluido.
     excluido = proveedor_sin_retencion(texto)
     if excluido:
         return {

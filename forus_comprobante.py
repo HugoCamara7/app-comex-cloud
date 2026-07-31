@@ -67,7 +67,14 @@ def es_pagina_de_documento(texto):
     return bool(MARCADOR_DOCUMENTO_RE.search(normalize(texto or "")))
 
 def agrupar_documentos(paginas):
-    """Una factura por cada pagina con titulo de comprobante; el resto son anexos."""
+    """Una factura por cada pagina con titulo de comprobante; el resto son anexos.
+
+    El criterio de arriba es estricto a proposito: es lo que impide que el
+    estado de cuenta que acompana a una factura se cuele como un comprobante
+    aparte. Pero si el PDF entero no produce ni un documento, se toma su primera
+    pagina igualmente: mas vale leerla a medias y avisar, que descartar el
+    archivo en silencio.
+    """
     documentos = []
 
     for pagina in paginas:
@@ -87,7 +94,53 @@ def agrupar_documentos(paginas):
         elif documentos:
             documentos[-1]["anexos"].append(pagina)
 
+    if not documentos:
+        # El rescate exige encontrar al menos la serie y correlativo. Sin eso no
+        # hay comprobante que leer, y armar una fila con lo que haya suelto es
+        # peor que no leer nada: los PDFs escaneados suelen traer adjunta una
+        # orden de compra, y sus importes no son los de la factura.
+        con_texto = [pagina for pagina in paginas if (pagina["texto"] or "").strip()]
+        numero = detect_numero_factura("\n".join(p["texto"] for p in con_texto))
+        if con_texto and numero:
+            documentos.append({
+                "numero": numero,
+                "pagina_inicial": con_texto[0]["numero"],
+                "paginas": con_texto,
+                "anexos": [],
+                "sin_titulo": True,
+            })
+
     return documentos
+
+
+def diagnostico_lectura(paginas):
+    """Por que un PDF no se pudo reconocer. Se escribe en la hoja Auditoria."""
+    if not paginas:
+        return "El PDF no tiene paginas"
+
+    vacias = [p["numero"] for p in paginas
+              if not (p["texto"] or "").strip() and not p.get("ocr")]
+    texto = "\n".join(p["texto"] for p in paginas)
+
+    if not texto.strip():
+        return ("PDF escaneado: no tiene texto que leer, es una imagen. "
+                "Hace falta el PDF original que emitio el proveedor")
+
+    if vacias:
+        detalle = ("Paginas escaneadas (sin texto): "
+                   + ", ".join(str(n) for n in vacias) + ". ")
+    else:
+        detalle = ""
+
+    faltan = []
+    if not es_pagina_de_documento(texto):
+        faltan.append('no se encontro el titulo del comprobante ("FACTURA ELECTRONICA" y similares)')
+    if not detect_numero_factura(texto):
+        faltan.append("no se encontro la serie y correlativo (F001-00001234)")
+
+    if not faltan:
+        return detalle or None
+    return detalle + "Se leyo a medias: " + "; ".join(faltan)
 
 
 def deducir_totales_por_suma(texto):
