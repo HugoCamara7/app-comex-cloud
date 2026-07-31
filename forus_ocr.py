@@ -26,15 +26,41 @@ RESOLUCION = 200
 CONFIANZA_MINIMA = 0.5
 
 
-def ocr_disponible():
-    """Si estan las librerias necesarias para leer escaneos."""
+def estado_ocr():
+    """(disponible, motivo). El motivo explica que falta cuando no se puede usar.
+
+    Importa de verdad las librerias en vez de solo comprobar que esten: OpenCV,
+    que va por debajo del OCR, necesita libGL del sistema y falla al importarse
+    si no esta. Sin este detalle el OCR se apagaba en silencio y las facturas
+    escaneadas salian como ilegibles sin decir por que.
+    """
     try:
         import numpy  # noqa: F401
         import pypdfium2  # noqa: F401
+    except ImportError as error:
+        return False, (
+            f"Falta una libreria de lectura de PDF ({error.name}). "
+            "Anade pypdfium2 a requirements.txt"
+        )
+
+    try:
         from rapidocr_onnxruntime import RapidOCR  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    except ImportError as error:
+        return False, (
+            f"Falta el motor de OCR ({error.name}). Anade rapidocr-onnxruntime "
+            "a requirements.txt"
+        )
+    except Exception as error:
+        return False, (
+            f"El motor de OCR no arranca: {error}. Suele faltar una libreria del "
+            "sistema: crea un packages.txt con libgl1 y libglib2.0-0"
+        )
+
+    return True, None
+
+
+def ocr_disponible():
+    return estado_ocr()[0]
 
 
 @st.cache_resource(show_spinner=False)
