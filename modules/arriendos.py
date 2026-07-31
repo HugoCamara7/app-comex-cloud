@@ -10,6 +10,7 @@ elige la columna cuya suma cuadra con las operaciones gravadas e inafectas.
 import io
 import re
 
+import forus_ocr
 import pandas as pd
 import pdfplumber
 import streamlit as st
@@ -289,10 +290,14 @@ def construir_filas_control(cabecera, filas_detalle, nombre_archivo, mes_documen
 
 
 def leer_paginas(uploaded_file):
+    """Texto de cada pagina; las escaneadas se leen por OCR."""
+    datos = uploaded_file.getvalue()
     paginas = []
-    with pdfplumber.open(io.BytesIO(uploaded_file.getvalue())) as pdf:
+    with pdfplumber.open(io.BytesIO(datos)) as pdf:
         for numero, page in enumerate(pdf.pages, start=1):
             paginas.append({"numero": numero, "texto": page.extract_text() or ""})
+
+    forus_ocr.completar_paginas_vacias(datos, paginas)
     return paginas
 
 

@@ -20,11 +20,13 @@ import pandas as pd
 import pdfplumber
 import streamlit as st
 
+import forus_ocr
 import forus_tributario as tributario
 from forus_comprobante import (
     agrupar_documentos,
     deducir_totales_por_suma,
     detect_numero_factura,
+    diagnostico_lectura,
     extraer_lineas_detalle,
     zona_detalle,
     detect_tipo_documento,
@@ -141,6 +143,7 @@ PAGOS_AMPLIADO_COLUMNS = PAGOS_COLUMNS + [
     "Codigo Detraccion",
     "Concepto Detraccion",
     "Origen Tasa",
+    "Origen Texto",
     "Op. Gravadas",
     "IGV",
     "Orden de Compra",
@@ -282,6 +285,9 @@ def extraer_cabecera(text, pagina_inicial, paginas):
         "Importe Total": total,
         "Detraccion %": find_percent(text, [
             "PORCENTAJE DE DETRACCION", "DETRACCION", "OPERACION SUJETA A DETRACCION",
+        ]),
+        "Retencion Monto": find_money(text, [
+            "TOTAL RETENCION", "MONTO DE RETENCION", "RETENCION IGV", "RETENCION",
         ]),
         "Detraccion Monto": find_money(text, [
             "MONTO DE DETRACCION", "MONTO DETRACCION", "TOTAL DETRACCION",
@@ -435,15 +441,21 @@ def items_desde_texto(text, pagina):
 
 
 def leer_paginas(uploaded_file):
-    """Texto y tablas de cada pagina, con la codificacion ya corregida."""
+    """Texto y tablas de cada pagina, con la codificacion ya corregida.
+
+    Las paginas escaneadas no traen texto: esas se leen por OCR.
+    """
+    datos = uploaded_file.getvalue()
     paginas = []
-    with pdfplumber.open(io.BytesIO(uploaded_file.getvalue())) as pdf:
+    with pdfplumber.open(io.BytesIO(datos)) as pdf:
         for numero, page in enumerate(pdf.pages, start=1):
             paginas.append({
                 "numero": numero,
                 "texto": fix_mojibake(page.extract_text() or ""),
                 "tablas": page.extract_tables() or [],
             })
+
+    forus_ocr.completar_paginas_vacias(datos, paginas)
     return paginas
 
 
@@ -507,6 +519,19 @@ def process_pdf(uploaded_file, parametros=None):
     filas_item = []
     filas_auditoria = []
 
+    # Ningun archivo puede desaparecer sin dejar constancia de por que.
+    if not documentos_agrupados:
+        filas_auditoria.append({
+            "PDF File": uploaded_file.name,
+            "Pagina": None,
+            "Rol": "no_leido",
+            "Numero": None,
+            "Detalle": diagnostico_lectura(paginas) or "No se reconocio ningun comprobante",
+        })
+        return filas_documento, filas_item, filas_auditoria
+
+    aviso = diagnostico_lectura(paginas)
+
     for documento in documentos_agrupados:
         texto_completo = "\n".join(pagina["texto"] for pagina in documento["paginas"])
         cabecera = extraer_cabecera(
@@ -566,10 +591,20 @@ def process_pdf(uploaded_file, parametros=None):
             igv=cabecera.get("IGV"),
             tipo_documento=cabecera.get("Tipo Documento"),
             glosa=cabecera.get("Glosa"),
+            monto_retencion=cabecera.get("Retencion Monto"),
         ))
         cabecera.update(construir_fila_pago(cabecera))
 
-        cabecera["Observaciones"] = faltantes(cabecera, CAMPOS_OBLIGATORIOS)
+        leido_por_ocr = any(pagina.get("ocr") for pagina in documento["paginas"])
+        if leido_por_ocr:
+            cabecera["Origen Texto"] = "OCR"
+        cabecera["Observaciones"] = "; ".join(
+            parte for parte in [
+                faltantes(cabecera, CAMPOS_OBLIGATORIOS),
+                aviso,
+                "Leido por OCR de un escaneo: conviene revisar las cifras" if leido_por_ocr else None,
+            ] if parte
+        ) or None
 
         filas_documento.append(cabecera)
         filas_item.extend(items)
@@ -644,6 +679,7 @@ def build_summary_pagos(documentos, archivos):
         {"Metric": "Monto total retenido", "Value": suma("Monto Detraccion/Retencion", tributario.RETENCION)},
         {"Metric": "Neto a pagar", "Value": suma("Neto a Pagar")},
         {"Metric": "Comprobantes con campos sin leer", "Value": sum(1 for d in documentos if d.get("Observaciones"))},
+        {"Metric": "Archivos sin ningun comprobante", "Value": archivos - len({d.get("PDF File") for d in documentos})},
     ]
 
 
@@ -812,6 +848,24 @@ COLUMNAS_COSTOS_PREVIA = [
 ]
 
 
+def avisar_no_leidos(archivos, documentos):
+    """Avisa en pantalla de los PDFs que no dieron ningun comprobante."""
+    leidos = {documento.get("PDF File") for documento in documentos}
+    no_leidos = [archivo.name for archivo in archivos if archivo.name not in leidos]
+    if not no_leidos:
+        return
+
+    render_banner(
+        f"{len(no_leidos)} de {len(archivos)} archivo(s) no dieron ningun comprobante. "
+        "El motivo de cada uno esta en la hoja Auditoria del Excel. La causa mas "
+        "frecuente es que el PDF venga escaneado, sin texto que leer.",
+        tipo="warn",
+    )
+    with st.expander(f"Ver los {len(no_leidos)} archivos que no se leyeron"):
+        for nombre in no_leidos:
+            st.write(f"- {nombre}")
+
+
 def _cargar_comprobantes(clave, titulo):
     """Bloques 1 y 2 de la pantalla: cargar archivos y listarlos."""
     st.markdown(
@@ -953,6 +1007,8 @@ def render_pagos():
             ("Sin afectar", sin_afectar),
         ])
 
+        avisar_no_leidos(uploaded_files, documentos)
+
         if por_revisar:
             render_banner(
                 f"{por_revisar} comprobante(s) no se pudieron decidir solos y salen como "
@@ -1049,6 +1105,8 @@ def render_costos():
             ("Comprobantes leidos", len(documentos)),
             ("Lineas de detalle", len(items)),
         ])
+
+        avisar_no_leidos(uploaded_files, documentos)
 
         if sin_leer or descuadrados:
             render_banner(
