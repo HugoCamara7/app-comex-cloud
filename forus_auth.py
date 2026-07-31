@@ -129,7 +129,7 @@ def render_login_screen():
         <div class="login-shell">
             <div class="login-hero">
                 <div class="login-logo">{logo_html}</div>
-                <div class="login-title">Portal Forus</div>
+                <div class="login-title">Lectura Documentos Forus</div>
                 <div class="login-subtitle">Comex | Contabilidad | Recursos Humanos</div>
             </div>
         </div>

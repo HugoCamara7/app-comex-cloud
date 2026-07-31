@@ -1,7 +1,7 @@
-# Portal Forus — Comex + Contabilidad + Recursos Humanos
+# Lectura Documentos Forus
 
-Convierte `app-comex-cloud` en un portal de tres módulos. El Comex actual **no
-cambia de comportamiento**: se mueve tal cual a su propio archivo.
+Convierte `app-comex-cloud` en un portal con cuatro pantallas. El Comex actual
+**no cambia de comportamiento**: se mueve tal cual a su propio archivo.
 
 Commit base: **`2a25d7d` — "Update app_comex_cloud.py"**.
 
@@ -11,35 +11,37 @@ Commit base: **`2a25d7d` — "Update app_comex_cloud.py"**.
 
 El orden importa. Streamlit Cloud redespliega en cada commit, así que
 `app_comex_cloud.py` va **al final**: hasta ese momento la app sigue
-funcionando exactamente como hoy, porque nadie importa todavía los archivos
-nuevos.
+funcionando como hoy, porque nadie importa todavía los archivos nuevos. Si
+subes todo en un solo commit, mejor todavía.
 
 | # | Ruta en el repo | Acción |
 |---|---|---|
 | 1 | `forus_ui.py` | **Nuevo** |
 | 2 | `forus_parsing.py` | **Nuevo** |
-| 3 | `forus_auth.py` | **Nuevo** |
-| 4 | `modules/__init__.py` | **Nuevo** (crea la carpeta `modules/`) |
-| 5 | `modules/comex.py` | **Nuevo** |
-| 6 | `modules/contabilidad.py` | **Nuevo** |
-| 7 | `modules/alquileres.py` | **Nuevo** |
-| 8 | `modules/rrhh.py` | **Nuevo** |
-| 9 | `app_comex_cloud.py` | **Reemplaza** el que existe |
+| 3 | `forus_comprobante.py` | **Nuevo** |
+| 4 | `forus_tributario.py` | **Nuevo** |
+| 5 | `forus_auth.py` | **Nuevo** |
+| 6 | `modules/__init__.py` | **Nuevo** |
+| 7 | `modules/comex.py` | **Nuevo** |
+| 8 | `modules/contabilidad.py` | **Nuevo** |
+| 9 | `modules/arriendos.py` | **Nuevo** |
+| 10 | `app_comex_cloud.py` | **Reemplaza** el que existe |
 
-Para crear la carpeta desde la web de GitHub: *Add file → Create new file* y
-escribe `modules/__init__.py` en el nombre; la carpeta se crea sola.
+**Si ya subiste la versión anterior, borra del repo estos dos archivos**, que
+ya no se usan:
 
-**No hay que tocar** `requirements.txt`, `.devcontainer/devcontainer.json` ni
-los dos PNG del logo. El nombre del entrypoint sigue siendo
-`app_comex_cloud.py` a propósito, para no reconfigurar Streamlit Cloud ni el
-devcontainer.
+- `modules/rrhh.py` — era el lector de boletas de pago
+- `modules/alquileres.py` — se llama ahora `modules/arriendos.py`
+
+No rompen nada si se quedan (nadie los importa), pero sobran.
+
+**No hay que tocar** `requirements.txt`, `.devcontainer/` ni los PNG del logo.
+El entrypoint sigue llamándose `app_comex_cloud.py` para no reconfigurar
+Streamlit Cloud.
 
 ---
 
-## 2. Configurar los permisos en Secrets
-
-En Streamlit Cloud → *Settings → Secrets*, añade la sección `[modulos]` debajo
-de la que ya tienes:
+## 2. Secrets
 
 ```toml
 [auth]
@@ -53,260 +55,204 @@ de la que ya tienes:
 "hugo.camara@forus.pe"    = "todos"
 "bi@forus.pe"             = "todos"
 "liliana.vitate@forus.pe" = "comex"
-"danitza.cupe@forus.pe"   = "comex,contabilidad"
-"romulo.rasilla@forus.pe" = "comex"
+"danitza.cupe@forus.pe"   = "contabilidad"
+"romulo.rasilla@forus.pe" = "rrhh"
 
-# Opcional. Si lo pones, Contabilidad distingue mejor al proveedor del cliente:
-# el RUC que aparezca aquí se toma como cliente y el otro como emisor.
+# Opcional: ayuda a distinguir al proveedor del cliente en los comprobantes.
 [empresa]
 ruc = "20514811271"
+
+# Opcional: la regla de Pagos sale con estos valores. Solo hay que tocarlos si
+# la norma cambia.
+[tributario]
+umbral = 700
+tasa_retencion = 3
+# tasa_detraccion_defecto = 10   # ver seccion 3
 ```
 
-Claves válidas: `comex`, `contabilidad`, `rrhh`, o `todos`.
+Claves de `[modulos]`: `comex`, `contabilidad`, `rrhh`, o `todos`. Quien tenga
+`contabilidad` ve sus dos pantallas; quien tenga `rrhh` ve Arriendos.
 
-**Sin la sección `[modulos]` solo se ve Comex.** Es el valor por defecto, para
-que nadie pierda el acceso que ya tenía al subir esta versión. Los módulos
-nuevos permanecen invisibles hasta que asignes permisos: **este paso hay que
-hacerlo o Contabilidad y Recursos Humanos no aparecerán.**
-
-### Cómo se navega
-
-En el panel lateral, el desplegable **Sitio destino** lleva a cualquiera de las
-cuatro pantallas en un solo paso:
-
-- Comex
-- Contabilidad
-- Recursos Humanos - Boletas de pago
-- Recursos Humanos - Arriendos
-
-Solo aparecen las que permita el usuario, y quien tenga una sola no ve
-desplegable. El antiguo "Sitio destino" de Comex —un desplegable con la única
-opción "Comex Forus", que no hacía nada— se eliminó: ese hueco lo ocupa ahora
-este selector.
-
-**En el ZIP no va ningún `secrets.toml`.** Las contraseñas se escriben
-únicamente en el panel de Streamlit Cloud.
+**Sin la sección `[modulos]` solo se ve Comex.** Es el valor por defecto para
+que nadie pierda acceso al actualizar: **este paso hay que darlo o las
+pantallas nuevas no aparecen.**
 
 ---
 
-## 3. Los tres módulos
+## 3. Las cuatro pantallas
+
+Se eligen en el desplegable **Sitio destino** del panel lateral, en un paso.
 
 ### Comex — sin cambios
 
-Idéntico a hoy: sufijos `_CLB.pdf`, `_VNS.pdf`, `_PRF.pdf` y el mismo Excel de
-salida. Solo cambió de archivo.
+Idéntico a hoy: sufijos `_CLB.pdf`, `_VNS.pdf`, `_PRF.pdf` y el mismo Excel.
 
-### Contabilidad — comprobantes de proveedor
+### Contabilidad - Pagos
 
-Facturas, boletas de venta, notas de crédito y débito y recibos por honorarios.
-No hay que renombrar archivos. Excel con las hojas **Documentos** (32 columnas
-de cabecera), **Detalle** (líneas del comprobante), **Resumen** y **Auditoría**.
-Valida que `gravadas + IGV` cuadre con el importe total.
+Una fila por comprobante, con **la decisión de detracción o retención ya
+tomada**, que era el objetivo: que nadie tenga que repasarlo factura por
+factura.
 
-### Recursos Humanos — dos pantallas
+La regla se aplica en este orden:
 
-Ambas se eligen directamente en *Sitio destino*:
+1. **Si el comprobante declara detracción**, manda eso, con el porcentaje que
+   trae impreso. El proveedor ya determinó el tipo de servicio y su tasa.
+2. **Si no hay detracción y el total no pasa de S/ 700**, no corresponde
+   retención.
+3. **Si pasa de S/ 700**, corresponde retención del 3%, salvo que el proveedor
+   figure como agente de retención, agente de percepción o buen contribuyente.
 
-**Boletas de pago** → `salida_rrhh_boletas.xlsx`
-Hojas **Boletas** (45 columnas: trabajador, días, 9 ingresos, 10 descuentos,
-5 aportes del empleador, totales), **Conceptos** (todas las líneas leídas, con
-el bloque en que aparecían), **Resumen** y **Auditoría**. Cada concepto se
-clasifica según el bloque de la boleta donde está, no solo por su nombre, así
-que "comisión" en ingresos y "comisión sobre flujo" en descuentos no se
-confunden. Valida `ingresos − descuentos = neto`.
+Detracción y retención nunca se aplican juntas. La detracción se redondea a
+soles enteros, como corresponde.
 
-**Facturas de alquiler** → `control_alquileres.xlsx`
-Es el control que pediste. La hoja **Control** trae **solo tus nueve columnas,
-en tu orden**, una fila por concepto, para copiar y pegar sin borrar nada:
+Columnas de la hoja **Pagos**: número, tipo, fechas, RUC y razón social del
+proveedor, moneda, tipo de cambio, importe total, **importe en soles**,
+**Afecto a** (`DETRACCION` / `RETENCION` / `NO AFECTO` / `REVISAR`),
+**% aplicado**, **monto**, **neto a pagar**, **motivo**, código de detracción,
+orden de compra y forma de pago.
+
+**El motivo va escrito en cada fila** — "Importe de S/ 24.03 menor o igual al
+umbral de S/ 700", "El comprobante indica detracción del 12.0%", "Supera el
+umbral pero el proveedor figura como Agente de retención"— para poder
+verificarlo de un vistazo.
+
+**Cuando falta un dato, la fila sale como `REVISAR` en vez de arriesgar un
+número.** Pasa en dos casos: factura en dólares sin tipo de cambio con el que
+llevar el importe a soles, y comprobante que dice estar sujeto a detracción
+pero no imprime el porcentaje (le ocurre a Mall Plaza). Para el segundo caso,
+si quieres que se calcule igual, descomenta `tasa_detraccion_defecto = 10` en
+los secrets: se aplicará esa tasa y el motivo dirá que salió de la
+configuración, no del documento.
+
+### Contabilidad - Costos
+
+Los parámetros generales de cada comprobante y su detalle. Hojas
+**Documentos** (32 columnas: RUC, razón social, fechas, moneda, tipo de cambio,
+operaciones gravadas / exoneradas / inafectas / gratuitas, descuentos, ISC,
+IGV, otros cargos, total, detracción, orden de compra, forma de pago, guía de
+remisión), **Detalle** (código, descripción, cantidad, unidad, valor unitario,
+precio unitario, descuento e importe por línea), **Resumen** y **Auditoría**.
+Valida que `gravadas + IGV` cuadre con el total.
+
+### Recursos Humanos - Arriendos
+
+El control de facturas de arriendo de locales. La hoja **Control** trae **solo
+tus nueve columnas, en tu orden**, una fila por concepto:
 
 | Fecha | Tienda | MES | Concepto | SOLES | DOLARES | # Factura | RAZON SOCIAL | FECHA DE ENTREGA |
 
-Las demás hojas: **Control ampliado** (las mismas filas más contrato, local,
-periodo, importe con IGV, referencia, RUC, archivo, página y observaciones),
-**Facturas** (una por comprobante, con el cuadre y los duplicados),
-**Resumen** y **Auditoría**.
+Más las hojas **Control ampliado** (con contrato, local, periodo, importe con
+IGV, observaciones), **Facturas**, **Resumen** y **Auditoría**.
 
-Cómo sale cada columna:
+- **Tienda** — el local cuando la factura lo trae (`S146 HUSH PUPPIES`) y, si
+  no, el número de contrato (`9244`) o la referencia (`LCS 1070`).
+- **MES** — el del periodo facturado, sacado del propio concepto.
+- **SOLES / DOLARES** — el importe **sin IGV**. La columna correcta se elige
+  probando cuál cuadra con la base imponible, porque cada emisor la pone en un
+  sitio distinto.
+- **FECHA DE ENTREGA** — va vacía: no está en el PDF, es dato de ustedes.
 
-- **Fecha** — fecha de emisión del comprobante.
-- **Tienda** — el local cuando la factura lo trae (`S146 HUSH PUPPIES`,
-  `L-149/150/151 DHOUSE`, `HUSH PUPPIES PAQP`) y, cuando no, el número de
-  contrato (`9244`) o la referencia del local (`LCS 1070`). En la hoja *Control
-  ampliado* van contrato y local en columnas separadas.
-- **MES** — mes del periodo facturado, sacado del propio concepto
-  (`01.06.2026 - 30.06.2026` → JUNIO). Si el concepto no lo trae, se busca
-  escrito en el detalle (`JUNIO 2026`) y, en último caso, se usa el mes de
-  emisión. **De dónde salió queda anotado en la hoja Control ampliado.**
-- **Concepto** — la descripción limpia, sin código, cantidad, unidad ni fechas.
-- **SOLES / DOLARES** — el importe **sin IGV**, en la columna de su moneda.
-- **# Factura** — serie y correlativo normalizados a `F004-00332954`.
-- **RAZON SOCIAL** — el proveedor, no Forus.
-- **FECHA DE ENTREGA** — **va vacía**: ese dato no está en el PDF, es de
-  ustedes. La columna queda lista para llenarla a mano.
-
-**Cómo acierta el importe sin IGV.** Cada emisor pone esa columna en un sitio
-distinto: en Jockey es la última, en Mall Plaza la cuarta por el final (las dos
-últimas ya llevan IGV). En vez de adivinar, se prueban todas las columnas y se
-elige aquella cuya suma cuadra con las operaciones gravadas más inafectas del
-documento. Si ninguna cuadra, se avisa en Observaciones en vez de dar un número
-equivocado por bueno.
-
-También marca **facturas repetidas** (mismo comprobante en dos archivos, como
-los dos `F002-1894` que enviaste) y descarta los **anexos** —detalle de
-facturación, estado de cuenta— para que sus importes no entren al control,
-aunque sí los usa para completar el nombre del local.
+**Ya no hay lectura de boletas de pago.**
 
 ---
 
-## 4. Diff exacto contra `2a25d7d`
+## 4. Diff contra `2a25d7d`
 
 El original era un archivo de **2.213 líneas y 36 funciones**. Ahora son
-**9 archivos, 5.381 líneas y 127 funciones**.
+**10 archivos, 5.079 líneas y 117 funciones**.
 
 ### Funciones heredadas del Comex: 36 de 36 conservadas
 
-| Estado | Cantidad | Detalle |
-|---|---|---|
-| Idénticas **byte a byte** | **34** | Verificado comparando el árbol AST contra el commit base |
-| Modificadas a propósito | **2** | `render_login_screen`, `is_authenticated` |
-| Eliminadas | **0** | — |
-
-Las dos modificadas:
-
-- **`render_login_screen`** — el título pasa de "Lectura PDF Forus - Comex" a
-  "Portal Forus"; al validar la contraseña ahora también carga los módulos del
-  usuario y rechaza a quien no tenga ninguno. El CSS del login no se tocó.
-- **`is_authenticated`** — sin cambios en su cuerpo; se le añadió al lado
-  `current_user_modules()`.
-
-`split_lines` se movió de Comex a `forus_parsing.py` (mismo cuerpo, ahora
-compartida). Del panel lateral de Comex se quitaron dos líneas: el desplegable
-muerto "Sitio destino", cuyo sitio ocupa el selector del portal. Todo el motor
-de lectura de Comex — `process_columbia_pdf`,
-`process_vans_pdf`, `process_parfois_pdf`, `extract_items_from_invoice_text`,
-`parse_money`, `parse_quantity` y los demás — quedó intacto.
-
-### Dónde quedó cada parte del archivo viejo
-
-| Líneas del original | Destino |
+| Estado | Cantidad |
 |---|---|
-| 13, 32–43 (logo, helpers de UI) | `forus_ui.py` |
-| 15–19 (`SUFIJOS_MARCA`) | `modules/comex.py` |
-| 21–27, 56–164 (acceso) | `forus_auth.py` |
-| 46–53, 220–261, 283–287 (parseo) | `forus_parsing.py` |
-| 166–996 (motor Comex) | `modules/comex.py` |
-| 999–1003 (`set_page_config`) | `app_comex_cloud.py` |
-| 1005–1979 (CSS, 975 líneas) | `forus_ui.py` como `GLOBAL_CSS` |
-| 1983–2009 (logo y sesión) | `forus_ui.render_sidebar_header()` |
-| 2011–2035 (sidebar de marcas) | `modules/comex.render_sidebar()` |
-| 2037–2214 (pantalla Comex) | `modules/comex.render()` |
+| Idénticas **byte a byte** (verificado por AST) | **34** |
+| Modificadas a propósito | **2** |
+| Eliminadas | **0** |
+
+Las dos modificadas son `render_login_screen` (título nuevo y carga de
+permisos) e `is_authenticated` (mismo cuerpo, con `current_user_modules()` al
+lado). Del panel lateral de Comex se quitaron las dos líneas del desplegable
+muerto "Sitio destino", cuyo sitio ocupa ahora el selector del portal.
 
 ### Archivos
 
 | Archivo | Líneas | Funciones | Qué hace |
 |---|---|---|---|
-| `app_comex_cloud.py` | 59 | 0 | Arranque, login y router de módulos |
+| `app_comex_cloud.py` | 62 | 0 | Arranque, login y selector de destino |
 | `forus_ui.py` | 1.286 | 16 | CSS completo y componentes de pantalla |
-| `forus_auth.py` | 181 | 7 | Login y permisos por módulo |
-| `forus_parsing.py` | 483 | 26 | Utilidades de parseo compartidas |
-| `modules/comex.py` | 1.010 | 27 | Comex, sin cambios de comportamiento |
-| `modules/contabilidad.py` | 740 | 16 | Comprobantes de proveedor → Excel |
-| `modules/rrhh.py` | 921 | 17 | Boletas de pago y router de RRHH |
-| `modules/alquileres.py` | 700 | 18 | Facturas de arriendo → control |
+| `forus_auth.py` | 181 | 7 | Login y permisos |
+| `forus_parsing.py` | 481 | 25 | Importes, fechas, etiquetas, razón social |
+| `forus_comprobante.py` | 97 | 5 | Identificación de comprobantes |
+| `forus_tributario.py` | 237 | 5 | Regla de detracción y retención |
+| `modules/comex.py` | 1.007 | 27 | Comex, sin cambios |
+| `modules/contabilidad.py` | 940 | 18 | Pagos y Costos |
+| `modules/arriendos.py` | 787 | 14 | Control de arriendos |
+
+`forus_comprobante.py` es nuevo y merece una nota: reúne la identificación de
+comprobantes que se había endurecido leyendo tus facturas, y ahora la usan
+**las dos** áreas. Antes Contabilidad tenía su propia versión, más floja, y
+con tus PDFs confundía una cuenta bancaria del BCP con el número de factura,
+leía Lambramani como si fuera en dólares y tomaba el estado de cuenta de Mall
+Plaza como si fuera un comprobante más de S/ 104.503.
 
 ---
 
 ## 5. Comprobaciones que se pasaron
 
-**Estáticas** (`validate.py`):
+**Estáticas**: los 10 archivos compilan, cero funciones huérfanas, las 34
+funciones heredadas idénticas byte a byte al commit base, el CSS es cadena
+literal y no f-string.
 
-- Los 9 archivos compilan.
-- Cero funciones definidas y nunca llamadas.
-- Las 34 funciones heredadas no modificadas son idénticas byte a byte al
-  commit base, comparadas por AST.
-- Ninguna función del original se perdió.
-- El CSS es una cadena literal, no un f-string (el fallo de las llaves sin
-  doblar no puede repetirse aquí).
+**Funcionales** (133 comprobaciones): importes en formato peruano y europeo,
+fechas en cuatro formatos, Contabilidad con varios comprobantes por PDF,
+Arriendos con todas sus columnas, y **26 comprobaciones solo de la regla de
+detracción y retención**: el umbral por arriba y por abajo, S/ 700 exactos, la
+detracción declarada ganando al umbral, el redondeo a soles enteros, el
+proveedor excluido, dólares con y sin tipo de cambio, y el caso sin importe.
 
-**Funcionales** (`test_app.py`, 137 comprobaciones):
+**AppTest**: login correcto y rechazado, las cuatro pantallas cargando sin
+`st.exception` ni `st.error`, permisos por usuario y destino inválido guardado.
+Arranque headless HTTP 200.
 
-- Importes en formato peruano y europeo, negativos, con símbolo de moneda.
-- Fechas en cuatro formatos.
-- Contabilidad: factura completa (15 campos de cabecera, 2 líneas) y dos
-  comprobantes en un mismo PDF.
-- Boletas: 19 campos incluidos los tres conceptos de AFP; dos boletas en un PDF.
-- Alquileres: contrato, local, mes del periodo, importe sin IGV, dólares,
-  anexos descartados, razón social partida por el RUC, duplicados marcados y
-  el caso en que el valor sin IGV **no** es la última columna.
-- Un PDF ilegible no tumba el lote.
-- **AppTest**: login correcto y rechazado, los tres módulos y las dos pantallas
-  de RRHH cargando sin `st.exception` **ni `st.error`**.
-- Arranque headless: **HTTP 200**.
-
-**Contra tus 7 PDFs reales** (Jockey Plaza, Mall del Sur, Real Plaza,
-Lambramani ×3, Mall Plaza):
-
-- 7 de 7 facturas leídas, **7 de 7 cuadran** con su base imponible.
-- 10 filas de control, 0 facturas sin conceptos.
-- S/ 16.530,98 y US$ 371,81.
-
-Durante las pruebas aparecieron y se corrigieron tres fallos reales: el patrón
-`\b?` en `find_money` (inválido en `re`, habría reventado en cada lectura de
-importes), el encabezado de la tabla que se buscaba sin normalizar (por eso
-`DESCRIPCION` nunca casaba con `Descripción` y Jockey no devolvía conceptos), y
-el alias `LOCAL` que acertaba dentro de "RENTA MINIMA **LOCAL** DEL 01/07/2026".
+**Contra tus 7 PDFs reales**, por Arriendos: 7 de 7 leídas, 7 de 7 cuadran,
+10 filas de control. Por Pagos: 7 comprobantes bien identificados, con Jockey
+al 10%, Real Plaza al 12% y Lambramani al 10% de detracción, y las dos notas
+de débito de S/ 513.50 correctamente por debajo del umbral.
 
 ---
 
 ## 6. Lo que NO se hizo, y por qué
 
-1. **Tienda queda vacía en la factura de Real Plaza.** Esa factura no trae ni
-   contrato ni local con una etiqueta propia: el `LOCAL COMERCIAL` es un
-   encabezado de tabla cuyo valor cae en otra línea. Preferí dejarla vacía
-   antes que llenarla con texto equivocado. En las otras seis sale. El N° de
-   factura y la razón social sí salen en las siete.
+1. **La retención asume el 3% del régimen general** y que Forus es agente de
+   retención. Si alguna operación va por otra tasa, se ajusta en
+   `[tributario]` sin tocar código.
 
-2. **FECHA DE ENTREGA siempre vacía.** No está en ningún PDF.
+2. **No se consulta a SUNAT.** La condición del proveedor (agente de
+   retención, buen contribuyente) se toma de lo que el propio comprobante
+   declare impreso. Es lo que hay en el PDF; si necesitas contrastarlo contra
+   el padrón de SUNAT, eso es un trabajo aparte.
 
-3. **El MES puede no ser el que ustedes usan.** En tu Excel de ejemplo las
-   facturas de diciembre van a ENERO, o sea que el mes es el de devengue según
-   su criterio interno. Yo tomo el del periodo facturado, que es lo único que
-   dice el documento. Cuando no viene, lo anoto en Observaciones para que se
-   revise.
+3. **La tasa de detracción sale del comprobante, no de una tabla por tipo de
+   servicio.** Es lo correcto: el proveedor ya la determinó. Cuando no la
+   imprime, la fila sale como `REVISAR` salvo que configures una por defecto.
 
-4. **Los importes salen sin IGV**, porque es lo que cuadra con las cifras de tu
-   Excel (el fondo de promociones es exactamente el 10% de la renta mínima). La
-   columna *Importe con IGV* va al lado por si en algún caso necesitas la otra.
+4. **"Parámetros generales" en Costos lo interpreté** como la cabecera completa
+   del comprobante más su detalle de ítems. Si esperabas otra cosa, dímelo y
+   lo ajusto: el motor ya lee todo, es cuestión de elegir columnas.
 
-5. **Dos comprobantes en la *misma página física* no se separan.** La
-   separación es por página. Es deliberado: partir dentro de una página crearía
-   documentos fantasma, porque una nota de crédito cita el número de la factura
-   que corrige. Un documento por página —que es lo normal— sí funciona.
+5. **Tienda queda vacía en la factura de Real Plaza**: no trae contrato ni
+   local con etiqueta propia. Preferí dejarla vacía antes que meter un dato
+   equivocado.
 
-6. **Las boletas de pago no se probaron con documentos reales.** No me enviaste
-   ninguna; están probadas con boletas sintéticas en formato de planilla
-   peruana. Con las primeras reales seguramente haya que añadir algún alias de
-   concepto: la hoja *Conceptos* lista todo lo leído para poder verificarlo.
-   Con las facturas de alquiler no hace falta: esas sí están probadas contra
-   tus PDFs.
-
-7. **`parse_money` de Comex se quedó como estaba.** Interpreta `1,234.00` como
-   1.234 porque asume el punto como separador de miles. Cambiarlo alteraría los
-   resultados de Comex en producción, y eso no es parte de este encargo. Los
-   módulos nuevos usan `parse_amount`, que detecta ambos formatos. **Vale la
-   pena revisarlo aparte**: si alguna factura de Columbia o Vans trae importes
-   en formato americano, hoy se están leyendo mal.
-
-8. **No se hizo conciliación bancaria, asientos contables, control de
-   asistencia ni legajo de personal.** No eran las opciones elegidas.
-
-9. **Las boletas llevan datos personales.** No se guardan en ningún lado, pero
-   conviene decidir con cuidado quién lleva `rrhh` en `[modulos]`.
+6. **`parse_money` de Comex se quedó como estaba.** Interpreta `1,234.00` como
+   1.234 porque asume el punto como separador de miles. No lo toqué porque
+   alteraría los resultados de Comex en producción. **Vale la pena revisarlo
+   aparte**: si alguna factura de Columbia o Vans trae importes en formato
+   americano, hoy se leen mal.
 
 ---
 
 ## 7. Si algo sale mal
 
-Para volver atrás basta con restaurar `app_comex_cloud.py` desde el commit
-`2a25d7d` en el historial de GitHub. Los ocho archivos nuevos pueden quedarse
-donde están: sin el entrypoint nuevo, nadie los importa.
+Restaura `app_comex_cloud.py` desde el commit `2a25d7d`. Los archivos nuevos
+pueden quedarse: sin el entrypoint nuevo, nadie los importa.

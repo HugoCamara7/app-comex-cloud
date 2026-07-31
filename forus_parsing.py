@@ -185,19 +185,32 @@ def find_label_value(text, labels, max_chars=90, requiere_separador=False):
     if not text:
         return None
 
-    separador = r"\s*[:=]\s*" if requiere_separador else r"\s*[:.\-]?\s*"
-
-    plano = normalize(text)
-    for label in labels:
-        match = re.search(_patron_etiqueta(label) + separador, plano)
-        if not match:
-            continue
-        inicio = match.end()
-        resto = text[inicio:inicio + max_chars]
-        valor = collapse_spaces(resto.split("\n", 1)[0])
-        if valor:
-            return valor
+    for valor in iter_label_values(text, labels, max_chars, requiere_separador):
+        return valor
     return None
+
+
+def iter_label_values(text, labels, max_chars=90, requiere_separador=False):
+    """Todos los valores que siguen a las etiquetas, alias por alias.
+
+    Hace falta porque una etiqueta suele aparecer varias veces: "TOTAL" esta
+    primero en el encabezado de la tabla, donde no hay ningun importe detras, y
+    solo mas abajo en la fila que interesa. Quedarse con la primera aparicion
+    hace perder el dato.
+    """
+    if not text:
+        return
+
+    separador = r"\s*[:=]\s*" if requiere_separador else r"\s*[:.\-]?\s*"
+    plano = normalize(text)
+
+    for label in labels:
+        for match in re.finditer(_patron_etiqueta(label) + separador, plano):
+            inicio = match.end()
+            resto = text[inicio:inicio + max_chars]
+            valor = collapse_spaces(resto.split("\n", 1)[0])
+            if valor:
+                yield valor
 
 
 PORCENTAJE_RE = re.compile(r"\(?\s*\d+(?:[.,]\d+)?\s*%\s*\)?")
@@ -209,15 +222,16 @@ def find_money(text, labels):
     Descarta los porcentajes para que "IGV (18%): 180.00" devuelva 180.00 y
     no 18, que es el error tipico al leer estas cabeceras.
     """
-    crudo = find_label_value(text, labels)
-    if not crudo:
-        return None
-
-    limpio = PORCENTAJE_RE.sub(" ", crudo)
-    limpio = re.sub(r"(?i)(?:S/\.?|US\$|\$)", " ", limpio)
-    limpio = re.sub(r"(?i)\b(?:USD|PEN|EUR|SOLES|DOLARES)\b", " ", limpio)
-    match = re.search(r"-?\(?\d[\d.,]*\)?-?", limpio)
-    return parse_amount(match.group(0)) if match else None
+    for crudo in iter_label_values(text, labels):
+        limpio = PORCENTAJE_RE.sub(" ", crudo)
+        limpio = re.sub(r"(?i)(?:S/\.?|US\$|\$)", " ", limpio)
+        limpio = re.sub(r"(?i)\b(?:USD|PEN|EUR|SOLES|DOLARES)\b", " ", limpio)
+        match = re.search(r"-?\(?\d[\d.,]*\)?-?", limpio)
+        if match:
+            valor = parse_amount(match.group(0))
+            if valor is not None:
+                return valor
+    return None
 
 
 def find_percent(text, labels):
@@ -227,14 +241,6 @@ def find_percent(text, labels):
         return None
     match = re.search(r"(\d+(?:[.,]\d+)?)\s*%", crudo)
     return parse_amount(match.group(1)) if match else None
-
-
-def find_int(text, labels):
-    crudo = find_label_value(text, labels)
-    if not crudo:
-        return None
-    match = re.search(r"\d[\d.,]*", crudo)
-    return parse_quantity(match.group(0)) if match else None
 
 
 MESES = {
@@ -298,14 +304,6 @@ def find_ruc(text, labels=None):
                 return match.group(1)
 
     match = re.search(patron, text or "")
-    return match.group(1) if match else None
-
-
-def find_dni(text, labels):
-    crudo = find_label_value(text, labels)
-    if not crudo:
-        return None
-    match = re.search(r"\b(\d{8})\b", crudo)
     return match.group(1) if match else None
 
 
