@@ -855,10 +855,13 @@ def avisar_no_leidos(archivos, documentos):
     if not no_leidos:
         return
 
+    disponible, motivo = forus_ocr.estado_ocr()
+    aviso_ocr = "" if disponible else f" El OCR no esta activo: {motivo}."
+
     render_banner(
         f"{len(no_leidos)} de {len(archivos)} archivo(s) no dieron ningun comprobante. "
         "El motivo de cada uno esta en la hoja Auditoria del Excel. La causa mas "
-        "frecuente es que el PDF venga escaneado, sin texto que leer.",
+        f"frecuente es que el PDF venga escaneado, sin texto que leer.{aviso_ocr}",
         tipo="warn",
     )
     with st.expander(f"Ver los {len(no_leidos)} archivos que no se leyeron"):
