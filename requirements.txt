@@ -5,4 +5,5 @@ openpyxl
 python-dotenv
 streamlit
 pypdfium2
-rapidocr-onnxruntime
+rapidocr
+opencv-python-headless

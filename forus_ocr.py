@@ -44,16 +44,15 @@ def estado_ocr():
         )
 
     try:
-        from rapidocr_onnxruntime import RapidOCR  # noqa: F401
+        _clase_motor()
     except ImportError as error:
         return False, (
-            f"Falta el motor de OCR ({error.name}). Anade rapidocr-onnxruntime "
-            "a requirements.txt"
+            f"Falta el motor de OCR ({error.name}). Anade rapidocr a requirements.txt"
         )
     except Exception as error:
         return False, (
-            f"El motor de OCR no arranca: {error}. Suele faltar una libreria del "
-            "sistema: crea un packages.txt con libgl1 y libglib2.0-0"
+            f"El motor de OCR no arranca: {error}. Si menciona libGL, anade "
+            "opencv-python-headless a requirements.txt"
         )
 
     return True, None
@@ -63,12 +62,52 @@ def ocr_disponible():
     return estado_ocr()[0]
 
 
+def _clase_motor():
+    """La clase RapidOCR, sea de la version nueva o de la antigua.
+
+    La 3.x se llama `rapidocr` y es la unica con soporte para Python 3.13 y
+    posteriores; `rapidocr_onnxruntime` es la anterior. Se aceptan las dos para
+    que la aplicacion funcione con cualquiera de las que haya instalada.
+    """
+    try:
+        from rapidocr import RapidOCR
+    except ImportError:
+        from rapidocr_onnxruntime import RapidOCR
+    return RapidOCR
+
+
 @st.cache_resource(show_spinner=False)
 def _motor():
-    """El motor de OCR se carga una sola vez y se reutiliza."""
-    from rapidocr_onnxruntime import RapidOCR
+    """El motor de OCR se carga una sola vez y se reutiliza.
 
-    return RapidOCR()
+    La primera vez descarga sus modelos, asi que tarda mas que las siguientes.
+    """
+    import logging
+
+    logging.getLogger("RapidOCR").setLevel(logging.WARNING)
+    return _clase_motor()()
+
+
+def _bloques(resultado):
+    """Normaliza la salida a [(caja, texto, confianza)].
+
+    La version 3.x devuelve un objeto con boxes, txts y scores por separado; la
+    antigua, una lista de tuplas.
+    """
+    if resultado is None:
+        return []
+
+    cajas = getattr(resultado, "boxes", None)
+    if cajas is None:
+        return list(resultado)
+
+    textos = getattr(resultado, "txts", None) or []
+    scores = getattr(resultado, "scores", None) or []
+    return [
+        (cajas[indice], textos[indice] if indice < len(textos) else "",
+         scores[indice] if indice < len(scores) else None)
+        for indice in range(len(cajas))
+    ]
 
 
 def _agrupar_en_lineas(bloques):
@@ -138,10 +177,10 @@ def texto_por_ocr(datos_pdf, numeros_pagina):
                 continue
             try:
                 imagen = documento[indice].render(scale=RESOLUCION / 72).to_pil()
-                bloques, _ = motor(np.array(imagen))
+                bloques = _bloques(motor(np.array(imagen)))
             except Exception:
                 continue  # una pagina ilegible no debe frenar a las demas
-            texto = _agrupar_en_lineas(bloques or [])
+            texto = _agrupar_en_lineas(bloques)
             if texto.strip():
                 resultados[numero] = texto
     finally:
