@@ -41,7 +41,29 @@ TASA_RETENCION_DEFECTO = 3.0
 # Cada entrada es codigo: (nombre del bien o servicio, tasa).
 # ---------------------------------------------------------------------------
 TASAS_DETRACCION = {
-    # Anexo 3 - servicios
+    # --- Anexo 2: bienes ---
+    "004": ("Recursos hidrobiologicos", 4.0),
+    "005": ("Maiz amarillo duro", 4.0),
+    "008": ("Madera", 4.0),
+    "009": ("Arena y piedra", 10.0),
+    "010": ("Residuos, subproductos, desechos, recortes y desperdicios", 15.0),
+    "011": ("Bienes gravados con el IGV por renuncia a la exoneracion", 10.0),
+    "014": ("Carnes y despojos comestibles", 4.0),
+    "015": ("Abonos, cueros y pieles de origen animal", 4.0),
+    "016": ("Aceite de pescado", 10.0),
+    "017": ("Harina, polvo y pellets de pescado", 4.0),
+    "018": ("Embarcaciones pesqueras", 10.0),
+    "023": ("Leche", 4.0),
+    "029": ("Algodon en rama sin desmotar", 10.0),
+    "031": ("Oro gravado con el IGV", 10.0),
+    "032": ("Paprika y otros frutos del genero capsicum", 10.0),
+    "033": ("Esparragos", 10.0),
+    "034": ("Minerales metalicos no auriferos", 10.0),
+    "035": ("Bienes exonerados del IGV", 1.5),
+    "036": ("Oro y demas minerales metalicos exonerados del IGV", 1.5),
+    "039": ("Minerales no metalicos", 10.0),
+    "041": ("Plomo", 15.0),
+    # --- Anexo 3: servicios ---
     "012": ("Intermediacion laboral y tercerizacion", 12.0),
     "019": ("Arrendamiento de bienes", 10.0),
     "020": ("Mantenimiento y reparacion de bienes muebles", 12.0),
@@ -50,18 +72,15 @@ TASAS_DETRACCION = {
     "024": ("Comision mercantil", 10.0),
     "025": ("Fabricacion de bienes por encargo", 10.0),
     "026": ("Servicio de transporte de personas", 10.0),
+    "027": ("Servicio de transporte de bienes por via terrestre", 4.0),
     "030": ("Contratos de construccion", 4.0),
     "037": ("Demas servicios gravados con el IGV", 12.0),
-    "040": ("Servicio de transporte de bienes por via terrestre", 4.0),
-    # Anexo 2 - bienes que aparecen con mas frecuencia
-    "008": ("Madera", 4.0),
-    "009": ("Arena y piedra", 10.0),
-    "010": ("Residuos, subproductos, desechos y recortes", 15.0),
-    "031": ("Oro gravado con el IGV", 10.0),
-    "034": ("Minerales metalicos no auriferos", 10.0),
-    "035": ("Bienes exonerados del IGV", 1.5),
-    "039": ("Minerales no metalicos", 10.0),
 }
+
+# Codigos vistos en facturas reales de Forus: su tasa esta contrastada contra
+# el propio comprobante. El resto de la tabla sale de la norma y Contabilidad
+# tiene que validarlo contra la tabla oficial de SUNAT antes de confiar en el.
+CODIGOS_VERIFICADOS = {"019", "021", "022"}
 
 # Ultimo recurso: cuando el comprobante no trae ni tasa ni codigo, se busca el
 # concepto en la glosa. Es una inferencia y la fila queda marcada como tal,
@@ -69,7 +88,7 @@ TASAS_DETRACCION = {
 # tributa como arrendamiento (019, 10%) y no como el codigo 020 (12%).
 PALABRAS_POR_CODIGO = [
     ("019", ("ARRENDAMIENTO", "ARRIENDO", "ALQUILER", "RENTA MINIMA", "LOCAL COMERCIAL")),
-    ("040", ("TRANSPORTE DE BIENES", "FLETE", "TRANSPORTE DE CARGA")),
+    ("027", ("TRANSPORTE DE BIENES", "FLETE", "TRANSPORTE DE CARGA")),
     ("021", ("MOVIMIENTO DE CARGA", "ESTIBA", "DESESTIBA", "CARGA Y DESCARGA")),
     ("026", ("TRANSPORTE DE PERSONAL", "TRANSPORTE DE PERSONAS", "MOVILIDAD DEL PERSONAL")),
     ("012", ("INTERMEDIACION LABORAL", "TERCERIZACION", "DESTAQUE DE PERSONAL")),
