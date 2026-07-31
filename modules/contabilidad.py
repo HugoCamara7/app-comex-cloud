@@ -4,6 +4,14 @@ Cubre factura, boleta, nota de credito, nota de debito y recibo por honorarios
 en formato electronico peruano. La lectura es por etiquetas, no por posicion,
 de modo que tolera que cada proveedor arme el PDF a su manera. Lo que no logra
 identificar no se inventa: queda vacio y se reporta en la hoja Auditoria.
+
+El mismo motor alimenta dos pantallas:
+
+- **Pagos**: una fila por comprobante con la decision ya tomada de si va con
+  detraccion, con retencion o con ninguna de las dos, para no revisarlo a mano
+  factura por factura. La regla esta en forus_tributario.
+- **Costos**: los parametros generales de cada comprobante y su detalle de
+  items, sin la parte de pago.
 """
 import io
 import re
@@ -12,10 +20,18 @@ import pandas as pd
 import pdfplumber
 import streamlit as st
 
+import forus_tributario as tributario
+from forus_comprobante import (
+    agrupar_documentos,
+    deducir_totales_por_suma,
+    detect_numero_factura,
+    detect_tipo_documento,
+)
+
 from forus_parsing import (
     collapse_spaces,
     cuadra,
-    detect_currency,
+    detect_currency_document,
     faltantes,
     find_date,
     find_label_value,
@@ -95,6 +111,30 @@ ITEM_COLUMNS = [
     "Importe",
 ]
 
+# Pantalla de Pagos: una fila por comprobante, con la decision ya tomada.
+PAGOS_COLUMNS = [
+    "Numero",
+    "Tipo Documento",
+    "Fecha Emision",
+    "Fecha Vencimiento",
+    "RUC Emisor",
+    "Razon Social Emisor",
+    "Moneda",
+    "Tipo de Cambio",
+    "Importe Total",
+    "Importe en Soles",
+    "Afecto a",
+    "% Aplicado",
+    "Monto Detraccion/Retencion",
+    "Neto a Pagar",
+    "Motivo",
+    "Codigo Detraccion",
+    "Orden de Compra",
+    "Forma de Pago",
+    "PDF File",
+    "Observaciones",
+]
+
 SUMMARY_COLUMNS = ["Metric", "Value"]
 
 AUDIT_COLUMNS = ["PDF File", "Pagina", "Rol", "Numero", "Detalle"]
@@ -105,25 +145,6 @@ CAMPOS_OBLIGATORIOS = [
     "Fecha Emision",
     "Importe Total",
 ]
-
-# El orden manda: una nota de credito nombra a la factura que corrige, asi que
-# hay que descartarla como nota antes de mirar si dice "factura".
-TIPOS_DOCUMENTO = [
-    ("NOTA DE CREDITO", "Nota de Credito"),
-    ("NOTA DE DEBITO", "Nota de Debito"),
-    ("RECIBO POR HONORARIOS", "Recibo por Honorarios"),
-    ("BOLETA DE VENTA", "Boleta de Venta"),
-    ("FACTURA", "Factura"),
-]
-
-TIPO_POR_SERIE = {
-    "F": "Factura",
-    "B": "Boleta de Venta",
-    "E": "Recibo por Honorarios",
-}
-
-SERIE_ELECTRONICA_RE = re.compile(r"\b([FBE][A-Z0-9]{2,3})\s*[-‐-―]\s*(\d{1,10})\b")
-SERIE_FISICA_RE = re.compile(r"\b(\d{3,4})\s*[-‐-―]\s*(\d{5,10})\b")
 
 ALIAS_COLUMNAS = [
     ("Codigo", ["CODIGO INTERNO", "COD. PRODUCTO", "CODIGO", "COD.", "COD", "ITEM"]),
@@ -152,33 +173,6 @@ def get_ruc_empresa():
     return ruc if re.fullmatch(r"\d{11}", ruc) else None
 
 
-def detect_tipo_documento(text):
-    plano = normalize(text)
-    for patron, etiqueta in TIPOS_DOCUMENTO:
-        if patron in plano:
-            return etiqueta
-    return None
-
-
-def detect_serie_correlativo(text):
-    """Serie y correlativo del comprobante, priorizando la serie electronica."""
-    match = SERIE_ELECTRONICA_RE.search(text or "")
-    if match:
-        return match.group(1).upper(), match.group(2)
-
-    match = SERIE_FISICA_RE.search(text or "")
-    if match:
-        return match.group(1), match.group(2)
-
-    return None, None
-
-
-def formatear_numero(serie, correlativo):
-    if not serie or not correlativo:
-        return None
-    return f"{serie}-{correlativo}"
-
-
 def extraer_rucs(text):
     """Devuelve (ruc_emisor, ruc_cliente) mirando todos los RUC del documento."""
     encontrados = []
@@ -201,16 +195,13 @@ def extraer_rucs(text):
 
 
 def extraer_cabecera(text, pagina_inicial, paginas):
-    serie, correlativo = detect_serie_correlativo(text)
+    numero = detect_numero_factura(text)
+    serie, _, correlativo = (numero or "").partition("-")
     tipo = detect_tipo_documento(text)
-    if not tipo and serie:
-        tipo = TIPO_POR_SERIE.get(serie[0].upper())
 
     ruc_emisor, ruc_cliente = extraer_rucs(text)
 
-    moneda = detect_currency(find_label_value(text, ["MONEDA", "TIPO DE MONEDA"]) or "")
-    if not moneda:
-        moneda = detect_currency(text)
+    moneda = detect_currency_document(text)
 
     gravadas = find_money(text, [
         "OP. GRAVADAS", "OP GRAVADAS", "OPERACIONES GRAVADAS", "OP. GRAVADA",
@@ -225,14 +216,24 @@ def extraer_cabecera(text, pagina_inicial, paginas):
         "IMPORTE TOTAL", "TOTAL A PAGAR", "PRECIO VENTA", "TOTAL VENTA",
         "TOTAL COMPROBANTE", "TOTAL",
     ])
+    if total is None:
+        total = find_money(text, ["TOTAL"])
+
+    # Algunos proveedores imprimen los totales sin repetir las etiquetas.
+    if gravadas is None or total is None:
+        base, igv_deducido, total_deducido = deducir_totales_por_suma(text)
+        if base is not None:
+            gravadas = gravadas if gravadas is not None else base
+            igv = igv if igv is not None else igv_deducido
+            total = total if total is not None else total_deducido
 
     fila = {
         "Pagina Inicial": pagina_inicial,
         "Paginas": paginas,
         "Tipo Documento": tipo,
-        "Serie": serie,
-        "Correlativo": correlativo,
-        "Numero": formatear_numero(serie, correlativo),
+        "Serie": serie or None,
+        "Correlativo": correlativo or None,
+        "Numero": numero,
         "RUC Emisor": ruc_emisor,
         "Razon Social Emisor": find_razon_social_emisor(text, excluir=("FORUS",)),
         "RUC Cliente": ruc_cliente,
@@ -407,39 +408,9 @@ def leer_paginas(uploaded_file):
     return paginas
 
 
-def agrupar_documentos(paginas):
-    """Reparte las paginas entre comprobantes.
-
-    Una pagina abre un comprobante nuevo cuando trae un tipo de documento y un
-    numero de serie distinto al que se venia leyendo. Un PDF con un solo
-    comprobante de varias paginas se queda como un unico documento.
-    """
-    documentos = []
-
-    for pagina in paginas:
-        texto = pagina["texto"]
-        serie, correlativo = detect_serie_correlativo(texto)
-        numero = formatear_numero(serie, correlativo)
-        tiene_tipo = detect_tipo_documento(texto) is not None
-
-        abre_documento = bool(numero) and tiene_tipo and (
-            not documentos or documentos[-1]["numero"] != numero
-        )
-
-        if abre_documento or not documentos:
-            documentos.append({
-                "numero": numero,
-                "pagina_inicial": pagina["numero"],
-                "paginas": [pagina],
-            })
-        else:
-            documentos[-1]["paginas"].append(pagina)
-
-    return documentos
-
-
-def process_pdf(uploaded_file):
+def process_pdf(uploaded_file, parametros=None):
     """Devuelve (documentos, items, auditoria) para un PDF."""
+    parametros = parametros or tributario.get_parametros()
     paginas = leer_paginas(uploaded_file)
     documentos_agrupados = agrupar_documentos(paginas)
 
@@ -455,6 +426,17 @@ def process_pdf(uploaded_file):
             len(documento["paginas"]),
         )
         cabecera["PDF File"] = uploaded_file.name
+
+        # Detraccion o retencion: se decide aqui, con el texto completo del
+        # comprobante delante, y viaja ya resuelto hasta el Excel de Pagos.
+        cabecera.update(tributario.evaluar(
+            cabecera.get("Importe Total"),
+            cabecera.get("Moneda"),
+            cabecera.get("Tipo de Cambio"),
+            texto_completo,
+            monto_detraccion=cabecera.get("Detraccion Monto"),
+            parametros=parametros,
+        ))
 
         items = []
         for pagina in documento["paginas"]:
@@ -486,6 +468,17 @@ def process_pdf(uploaded_file):
                 "Rol": "inicio_documento" if indice == 0 else "continuacion",
                 "Numero": cabecera["Numero"],
                 "Detalle": cabecera["Observaciones"] and f"Sin leer: {cabecera['Observaciones']}",
+            })
+
+        # Los anexos que acompanan a la factura -detalle de facturacion, estado
+        # de cuenta- no son comprobantes: se dejan anotados y no se leen.
+        for anexo in documento["anexos"]:
+            filas_auditoria.append({
+                "PDF File": uploaded_file.name,
+                "Pagina": anexo["numero"],
+                "Rol": "anexo",
+                "Numero": cabecera["Numero"],
+                "Detalle": "Anexo: no se toma como comprobante",
             })
 
     return filas_documento, filas_item, filas_auditoria
@@ -520,14 +513,37 @@ def build_summary_rows(documentos, items, auditoria, archivos):
     return filas
 
 
-def build_excel(files):
+def build_summary_pagos(documentos, archivos):
+    def suma(clave, afecto=None):
+        return round(sum(
+            d.get(clave) or 0 for d in documentos
+            if afecto is None or d.get("Afecto a") == afecto
+        ), 2)
+
+    return [
+        {"Metric": "Archivos procesados", "Value": archivos},
+        {"Metric": "Comprobantes", "Value": len(documentos)},
+        {"Metric": "Con detraccion", "Value": sum(1 for d in documentos if d.get("Afecto a") == tributario.DETRACCION)},
+        {"Metric": "Con retencion", "Value": sum(1 for d in documentos if d.get("Afecto a") == tributario.RETENCION)},
+        {"Metric": "Sin detraccion ni retencion", "Value": sum(1 for d in documentos if d.get("Afecto a") == tributario.NO_AFECTO)},
+        {"Metric": "Por revisar a mano", "Value": sum(1 for d in documentos if d.get("Afecto a") == tributario.REVISAR)},
+        {"Metric": "Monto total detraido", "Value": suma("Monto Detraccion/Retencion", tributario.DETRACCION)},
+        {"Metric": "Monto total retenido", "Value": suma("Monto Detraccion/Retencion", tributario.RETENCION)},
+        {"Metric": "Neto a pagar", "Value": suma("Neto a Pagar")},
+        {"Metric": "Comprobantes con campos sin leer", "Value": sum(1 for d in documentos if d.get("Observaciones"))},
+    ]
+
+
+def leer_lote(files):
+    """Procesa todos los PDFs una sola vez. Las dos pantallas parten de aqui."""
+    parametros = tributario.get_parametros()
     documentos = []
     items = []
     auditoria = []
 
     for uploaded_file in files:
         try:
-            filas_documento, filas_item, filas_auditoria = process_pdf(uploaded_file)
+            filas_documento, filas_item, filas_auditoria = process_pdf(uploaded_file, parametros)
         except Exception as error:  # un PDF danado no debe tumbar el lote entero
             auditoria.append({
                 "PDF File": uploaded_file.name,
@@ -542,6 +558,33 @@ def build_excel(files):
         items.extend(filas_item)
         auditoria.extend(filas_auditoria)
 
+    return documentos, items, auditoria
+
+
+def build_excel_pagos(files):
+    """Excel orientado al pago: que se detrae, que se retiene y cuanto se paga."""
+    documentos, _, auditoria = leer_lote(files)
+    resumen = build_summary_pagos(documentos, len(files))
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(documentos).reindex(columns=PAGOS_COLUMNS).to_excel(
+            writer, index=False, sheet_name="Pagos",
+        )
+        pd.DataFrame(resumen).reindex(columns=SUMMARY_COLUMNS).to_excel(
+            writer, index=False, sheet_name="Resumen",
+        )
+        pd.DataFrame(auditoria).reindex(columns=AUDIT_COLUMNS).to_excel(
+            writer, index=False, sheet_name="Auditoria",
+        )
+
+    output.seek(0)
+    return output, documentos
+
+
+def build_excel_costos(files):
+    """Excel con los parametros generales de cada comprobante y su detalle."""
+    documentos, items, auditoria = leer_lote(files)
     resumen = build_summary_rows(documentos, items, auditoria, len(files))
 
     output = io.BytesIO()
@@ -563,8 +606,37 @@ def build_excel(files):
     return output, documentos, items
 
 
-def render_sidebar():
-    """Panel lateral propio del modulo Contabilidad."""
+def render_sidebar_pagos():
+    """Panel lateral de Contabilidad - Pagos."""
+    parametros = tributario.get_parametros()
+    with st.sidebar:
+        st.markdown('<div class="side-title">Regla aplicada</div>', unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="side-card">
+                UMBRAL S/ {parametros['umbral']:,.0f}<br>
+                RETENCION {parametros['tasa_retencion']:g}%<br>
+                DETRACCION SEGUN EL PDF
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown('<div class="side-title">Operacion</div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="side-note">
+                Cada factura sale ya marcada como<br>
+                <b>DETRACCION</b>, <b>RETENCION</b> o <b>NO AFECTO</b>,
+                con el motivo al lado.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_sidebar_costos():
+    """Panel lateral de Contabilidad - Costos."""
     with st.sidebar:
         st.markdown('<div class="side-title">Documentos aceptados</div>', unsafe_allow_html=True)
         st.markdown(
@@ -592,8 +664,19 @@ def render_sidebar():
         )
 
 
-ICONO_CONTABILIDAD = """
-<svg viewBox="0 0 96 96" width="72" height="72" aria-label="Contabilidad">
+ICONO_PAGOS = """
+<svg viewBox="0 0 96 96" width="72" height="72" aria-label="Pagos">
+    <rect x="12" y="26" width="72" height="46" rx="8" fill="#ffffff" stroke="#bdd4f7"/>
+    <rect x="12" y="36" width="72" height="9" fill="#10916d"/>
+    <circle cx="66" cy="59" r="10" fill="#d7f2e7" stroke="#10916d"/>
+    <path d="M63 59h6M66 55v8" stroke="#0a5c47" stroke-width="2.4" stroke-linecap="round"/>
+    <rect x="22" y="55" width="22" height="4" rx="2" fill="#cfe6dd"/>
+    <rect x="22" y="63" width="14" height="4" rx="2" fill="#cfe6dd"/>
+</svg>
+"""
+
+ICONO_COSTOS = """
+<svg viewBox="0 0 96 96" width="72" height="72" aria-label="Costos">
     <rect x="20" y="10" width="56" height="76" rx="8" fill="#ffffff" stroke="#bdd4f7"/>
     <rect x="28" y="20" width="40" height="14" rx="4" fill="#d7f2e7"/>
     <rect x="28" y="42" width="16" height="12" rx="3" fill="#10916d"/>
@@ -603,45 +686,30 @@ ICONO_CONTABILIDAD = """
 </svg>
 """
 
+COLUMNAS_PAGOS_PREVIA = [
+    "Numero", "Fecha Emision", "Razon Social Emisor", "Moneda", "Importe Total",
+    "Afecto a", "% Aplicado", "Monto Detraccion/Retencion", "Neto a Pagar", "Motivo",
+]
 
-def render():
-    """Pantalla completa del modulo Contabilidad."""
-    st.markdown('<div class="app-shell">', unsafe_allow_html=True)
+COLUMNAS_COSTOS_PREVIA = [
+    "Numero", "Tipo Documento", "Fecha Emision", "RUC Emisor",
+    "Razon Social Emisor", "Moneda", "Op. Gravadas", "IGV", "Importe Total",
+    "Cuadra Total", "Observaciones",
+]
 
-    render_hero(
-        "CONTABILIDAD DOCUMENT CENTER",
-        'Comprobantes de proveedor <span style="color:#8ff0cf">&rsaquo;</span> Excel consolidado',
-        "Sube facturas, boletas, notas y recibos por honorarios y genera un Excel con Documentos, Detalle, Resumen y Auditoria.",
-        tags=[("Lectura por etiquetas", "green")],
-        variante="acct",
-        icono_svg=ICONO_CONTABILIDAD,
+
+def _cargar_comprobantes(clave, titulo):
+    """Bloques 1 y 2 de la pantalla: cargar archivos y listarlos."""
+    st.markdown(
+        f'<div class="work-card upload-wrap acct"><h3>{titulo}</h3>',
+        unsafe_allow_html=True,
     )
-
-    render_pipeline([
-        ("Input", "Comprobantes PDF", "active", "Pend."),
-        ("Lectura", "Etiquetas SUNAT", "ok", "OK"),
-        ("Validacion", "Gravadas + IGV vs Total", "warn", "Revisar"),
-        ("Salida", "Excel Contabilidad", "", "Pend."),
-    ])
-
-    render_rules(
-        "Preparar lectura de comprobantes",
-        "El sistema identifica el tipo de documento por su titulo y su serie, y separa cada comprobante aunque vengan varios en el mismo PDF.",
-        [
-            ("Cabecera", "RUC, razon social, fechas, moneda y tipo de cambio"),
-            ("Importes", "Gravadas, exoneradas, inafectas, IGV, ISC y total"),
-            ("Detalle", "Codigo, descripcion, cantidad, unitario e importe"),
-        ],
-        variante="acct",
-    )
-
-    st.markdown('<div class="work-card upload-wrap acct"><h3>1. Cargar comprobantes</h3>', unsafe_allow_html=True)
     uploaded_files = st.file_uploader(
         "Subir PDFs de comprobantes",
         type=["pdf"],
         accept_multiple_files=True,
         label_visibility="collapsed",
-        key="contabilidad_uploader",
+        key=f"{clave}_uploader",
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -671,21 +739,157 @@ def render():
         render_empty("Carga los comprobantes de tus proveedores para comenzar.")
 
     close_card()
+    return uploaded_files
+
+
+def render_pagos():
+    """Pantalla de Contabilidad - Pagos."""
+    parametros = tributario.get_parametros()
+    st.markdown('<div class="app-shell">', unsafe_allow_html=True)
+
+    render_hero(
+        "CONTABILIDAD - PAGOS",
+        'Comprobantes <span style="color:#8ff0cf">&rsaquo;</span> Detraccion o retencion resuelta',
+        "Sube las facturas de tus proveedores y cada una sale marcada como detraccion, retencion o ninguna, con el monto y el neto a pagar ya calculados.",
+        tags=[("Sin revisar a mano", "green")],
+        variante="acct",
+        icono_svg=ICONO_PAGOS,
+    )
+
+    render_pipeline([
+        ("Input", "Comprobantes PDF", "active", "Pend."),
+        ("Lectura", "Importes y proveedor", "ok", "OK"),
+        ("Regla", f"Umbral S/ {parametros['umbral']:,.0f}", "warn", "Auto"),
+        ("Salida", "Excel de pagos", "", "Pend."),
+    ])
+
+    render_rules(
+        "Como se decide cada factura",
+        "La regla se aplica sola, en este orden, y el motivo queda escrito al lado de cada fila.",
+        [
+            ("1. Detraccion", "Si el comprobante la declara, manda su porcentaje"),
+            ("2. Umbral", f"Hasta S/ {parametros['umbral']:,.0f} no corresponde retencion"),
+            ("3. Retencion", f"Sobre el umbral, {parametros['tasa_retencion']:g}% salvo proveedor excluido"),
+        ],
+        variante="acct",
+    )
+
+    uploaded_files = _cargar_comprobantes("pagos", "1. Cargar comprobantes")
 
     open_card(
         "3. Procesar y generar Excel",
         kicker="Salida final",
-        texto="Convierte tus comprobantes en un Excel con las hojas Documentos, Detalle, Resumen y Auditoria.",
+        texto="Genera el Excel con las hojas Pagos, Resumen y Auditoria.",
     )
 
     if st.button(
         "Procesar comprobantes",
         type="primary",
         disabled=not uploaded_files,
-        key="contabilidad_procesar",
+        key="pagos_procesar",
+    ):
+        with st.spinner("Leyendo comprobantes y aplicando la regla..."):
+            excel_bytes, documentos = build_excel_pagos(uploaded_files)
+
+        con_detraccion = sum(1 for d in documentos if d.get("Afecto a") == tributario.DETRACCION)
+        con_retencion = sum(1 for d in documentos if d.get("Afecto a") == tributario.RETENCION)
+        sin_afectar = sum(1 for d in documentos if d.get("Afecto a") == tributario.NO_AFECTO)
+        por_revisar = sum(1 for d in documentos if d.get("Afecto a") == tributario.REVISAR)
+
+        if documentos:
+            render_banner("Excel generado correctamente. Ya puedes descargar el detalle de pagos.")
+        else:
+            render_banner(
+                "No se reconocio ningun comprobante. Revisa la hoja Auditoria del Excel.",
+                tipo="warn",
+            )
+
+        render_stat_grid([
+            ("Con detraccion", con_detraccion),
+            ("Con retencion", con_retencion),
+            ("Sin afectar", sin_afectar),
+        ])
+
+        if por_revisar:
+            render_banner(
+                f"{por_revisar} comprobante(s) no se pudieron decidir solos y salen como "
+                "REVISAR, con el motivo escrito en su fila.",
+                tipo="warn",
+            )
+
+        if documentos:
+            st.dataframe(
+                pd.DataFrame(documentos).reindex(columns=COLUMNAS_PAGOS_PREVIA).head(80),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        st.download_button(
+            "Descargar Excel",
+            data=excel_bytes,
+            file_name="contabilidad_pagos.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="pagos_descargar",
+        )
+
+    close_card()
+
+    render_benefits([
+        ("La regla, aplicada sola", "Detraccion, retencion o ninguna, decidido por el monto y por lo que declara el PDF."),
+        ("Con el motivo al lado", "Cada fila dice por que le toco lo que le toco, para poder revisarla en un vistazo."),
+        ("Nada inventado", "Si falta un dato para decidir, la fila sale como REVISAR en vez de arriesgar un numero."),
+    ])
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_costos():
+    """Pantalla de Contabilidad - Costos."""
+    st.markdown('<div class="app-shell">', unsafe_allow_html=True)
+
+    render_hero(
+        "CONTABILIDAD - COSTOS",
+        'Comprobantes <span style="color:#8ff0cf">&rsaquo;</span> Parametros generales',
+        "Sube facturas, boletas, notas y recibos por honorarios y baja los parametros generales de cada comprobante con su detalle de items.",
+        tags=[("Lectura por etiquetas", "green")],
+        variante="acct",
+        icono_svg=ICONO_COSTOS,
+    )
+
+    render_pipeline([
+        ("Input", "Comprobantes PDF", "active", "Pend."),
+        ("Lectura", "Etiquetas SUNAT", "ok", "OK"),
+        ("Validacion", "Gravadas + IGV vs Total", "warn", "Revisar"),
+        ("Salida", "Excel de costos", "", "Pend."),
+    ])
+
+    render_rules(
+        "Que parametros se bajan",
+        "El tipo de documento se identifica por su titulo y su serie, y cada comprobante se separa aunque vengan varios en el mismo PDF.",
+        [
+            ("Cabecera", "RUC, razon social, fechas, moneda y tipo de cambio"),
+            ("Importes", "Gravadas, exoneradas, inafectas, IGV, ISC y total"),
+            ("Detalle", "Codigo, descripcion, cantidad, unitario e importe"),
+        ],
+        variante="acct",
+    )
+
+    uploaded_files = _cargar_comprobantes("costos", "1. Cargar comprobantes")
+
+    open_card(
+        "3. Procesar y generar Excel",
+        kicker="Salida final",
+        texto="Genera el Excel con las hojas Documentos, Detalle, Resumen y Auditoria.",
+    )
+
+    if st.button(
+        "Procesar comprobantes",
+        type="primary",
+        disabled=not uploaded_files,
+        key="costos_procesar",
     ):
         with st.spinner("Leyendo comprobantes..."):
-            excel_bytes, documentos, items = build_excel(uploaded_files)
+            excel_bytes, documentos, items = build_excel_costos(uploaded_files)
 
         sin_leer = sum(1 for documento in documentos if documento.get("Observaciones"))
         descuadrados = sum(1 for documento in documentos if documento.get("Cuadra Total") == "No")
@@ -712,11 +916,7 @@ def render():
 
         if documentos:
             st.dataframe(
-                pd.DataFrame(documentos).reindex(columns=[
-                    "Numero", "Tipo Documento", "Fecha Emision", "RUC Emisor",
-                    "Razon Social Emisor", "Moneda", "Op. Gravadas", "IGV",
-                    "Importe Total", "Cuadra Total", "Observaciones",
-                ]).head(50),
+                pd.DataFrame(documentos).reindex(columns=COLUMNAS_COSTOS_PREVIA).head(80),
                 use_container_width=True,
                 hide_index=True,
             )
@@ -724,16 +924,16 @@ def render():
         st.download_button(
             "Descargar Excel",
             data=excel_bytes,
-            file_name="salida_contabilidad.xlsx",
+            file_name="contabilidad_costos.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="contabilidad_descargar",
+            key="costos_descargar",
         )
 
     close_card()
 
     render_benefits([
+        ("Parametros completos", "32 columnas de cabecera mas el detalle de items de cada comprobante."),
         ("Control de cuadre", "Compara gravadas mas IGV contra el importe total de cada comprobante."),
-        ("Sin renombrar archivos", "Detecta el tipo de documento por su contenido, no por el nombre."),
         ("Nada inventado", "Lo que no se puede leer queda vacio y aparece en la hoja Auditoria."),
     ])
 
