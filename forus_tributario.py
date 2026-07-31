@@ -25,6 +25,60 @@ from forus_parsing import normalize, parse_amount
 UMBRAL_DEFECTO = 700.0
 TASA_RETENCION_DEFECTO = 3.0
 
+# ---------------------------------------------------------------------------
+# Tabla de tasas por codigo de bien o servicio.
+#
+# AVISO: las tasas de detraccion las modifica SUNAT por resolucion. Esta tabla
+# es un punto de partida que Contabilidad tiene que confirmar y mantener. Solo
+# se usa cuando el comprobante NO imprime el porcentaje; si lo imprime, manda
+# siempre el del documento. Se puede corregir desde los secrets sin tocar
+# codigo, con una seccion asi:
+#
+#     [detraccion_tasas]
+#     "019" = 10
+#     "020" = 12
+#
+# Cada entrada es codigo: (nombre del bien o servicio, tasa).
+# ---------------------------------------------------------------------------
+TASAS_DETRACCION = {
+    # Anexo 3 - servicios
+    "012": ("Intermediacion laboral y tercerizacion", 12.0),
+    "019": ("Arrendamiento de bienes", 10.0),
+    "020": ("Mantenimiento y reparacion de bienes muebles", 12.0),
+    "021": ("Movimiento de carga", 10.0),
+    "022": ("Otros servicios empresariales", 12.0),
+    "024": ("Comision mercantil", 10.0),
+    "025": ("Fabricacion de bienes por encargo", 10.0),
+    "026": ("Servicio de transporte de personas", 10.0),
+    "030": ("Contratos de construccion", 4.0),
+    "037": ("Demas servicios gravados con el IGV", 12.0),
+    "040": ("Servicio de transporte de bienes por via terrestre", 4.0),
+    # Anexo 2 - bienes que aparecen con mas frecuencia
+    "008": ("Madera", 4.0),
+    "009": ("Arena y piedra", 10.0),
+    "010": ("Residuos, subproductos, desechos y recortes", 15.0),
+    "031": ("Oro gravado con el IGV", 10.0),
+    "034": ("Minerales metalicos no auriferos", 10.0),
+    "035": ("Bienes exonerados del IGV", 1.5),
+    "039": ("Minerales no metalicos", 10.0),
+}
+
+# Ultimo recurso: cuando el comprobante no trae ni tasa ni codigo, se busca el
+# concepto en la glosa. Es una inferencia y la fila queda marcada como tal,
+# porque la descripcion enganya: un "MANTENIMIENTO" dentro de un arrendamiento
+# tributa como arrendamiento (019, 10%) y no como el codigo 020 (12%).
+PALABRAS_POR_CODIGO = [
+    ("019", ("ARRENDAMIENTO", "ARRIENDO", "ALQUILER", "RENTA MINIMA", "LOCAL COMERCIAL")),
+    ("040", ("TRANSPORTE DE BIENES", "FLETE", "TRANSPORTE DE CARGA")),
+    ("021", ("MOVIMIENTO DE CARGA", "ESTIBA", "DESESTIBA", "CARGA Y DESCARGA")),
+    ("026", ("TRANSPORTE DE PERSONAL", "TRANSPORTE DE PERSONAS", "MOVILIDAD DEL PERSONAL")),
+    ("012", ("INTERMEDIACION LABORAL", "TERCERIZACION", "DESTAQUE DE PERSONAL")),
+    ("020", ("MANTENIMIENTO Y REPARACION", "REPARACION DE", "MANTENIMIENTO DE EQUIPO")),
+    ("030", ("CONTRATO DE CONSTRUCCION", "OBRA CIVIL")),
+    ("025", ("FABRICACION POR ENCARGO", "BIENES POR ENCARGO")),
+    ("024", ("COMISION MERCANTIL",)),
+]
+
 DETRACCION = "DETRACCION"
 RETENCION = "RETENCION"
 NO_AFECTO = "NO AFECTO"
@@ -61,7 +115,14 @@ PORCENTAJE_DETRACCION_SIN_SIMBOLO_RE = re.compile(
     re.I,
 )
 PORCENTAJE_SUELTO_RE = re.compile(r"(\d{1,2}(?:[.,]\d{1,2})?)\s*%")
-CODIGO_DETRACCION_RE = re.compile(r"C[O�]DIGO\s+(?:DE\s+)?DETRACCI[O�]N\s*:?\s*(\d{3})", re.I)
+# El codigo identifica el bien o servicio del Anexo que fija la tasa. Cada
+# proveedor lo rotula a su manera: "Codigo Detraccion: 019" o, en la
+# representacion impresa de SUNAT, "Bien o Servicio: 021 Movimiento de carga".
+CODIGO_DETRACCION_RE = re.compile(
+    r"(?:C[OÓ]DIGO\s+(?:DE\s+)?DETRACCI[OÓ]N|BIEN\s+O\s+SERVICIO"
+    r"|C[OÓ]DIGO\s+(?:DE\s+)?BIEN\s+O\s+SERVICIO)\s*[:.]?\s*(\d{3})\b",
+    re.I,
+)
 
 
 def get_parametros():
@@ -81,7 +142,39 @@ def get_parametros():
         # tasa. Por defecto no se inventa ninguna; si se configura una aqui, se
         # aplica y queda dicho en el motivo de esa fila.
         "tasa_detraccion_defecto": parse_amount(configurado.get("tasa_detraccion_defecto")),
+        "tasas": get_tasas(),
     }
+
+
+def get_tasas():
+    """Tabla de tasas por codigo, con lo que se haya corregido en los secrets."""
+    tasas = {codigo: (nombre, tasa) for codigo, (nombre, tasa) in TASAS_DETRACCION.items()}
+
+    try:
+        ajustes = dict(st.secrets.get("detraccion_tasas", {}))
+    except Exception:
+        ajustes = {}
+
+    for codigo, valor in ajustes.items():
+        codigo = str(codigo).strip().zfill(3)
+        tasa = parse_amount(valor)
+        if tasa is None:
+            continue
+        nombre = tasas.get(codigo, ("Codigo " + codigo, None))[0]
+        tasas[codigo] = (nombre, tasa)
+
+    return tasas
+
+
+def buscar_codigo_por_concepto(glosa):
+    """Codigo probable a partir de la descripcion. Es una inferencia, no un dato."""
+    plano = normalize(glosa or "")
+    if not plano:
+        return None
+    for codigo, palabras in PALABRAS_POR_CODIGO:
+        if any(palabra in plano for palabra in palabras):
+            return codigo
+    return None
 
 
 def detectar_detraccion(texto):
@@ -91,8 +184,9 @@ def detectar_detraccion(texto):
     if not sujeta:
         return False, None, None
 
+    # Sobre el texto normalizado: si no, "Código" con tilde no casa nunca.
     codigo = None
-    match_codigo = CODIGO_DETRACCION_RE.search(texto or "")
+    match_codigo = CODIGO_DETRACCION_RE.search(normalize(texto or ""))
     if match_codigo:
         codigo = match_codigo.group(1)
 
@@ -144,7 +238,7 @@ def importe_en_soles(total, moneda, tipo_cambio):
 
 
 def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros=None,
-            igv=None, tipo_documento=None):
+            igv=None, tipo_documento=None, glosa=None):
     """Decide si la factura va con detraccion, con retencion o con ninguna.
 
     Devuelve las columnas listas para el Excel, incluido el motivo, para que no
@@ -161,6 +255,8 @@ def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros
         "Afecto a": REVISAR,
         "Motivo": None,
         "Codigo Detraccion": codigo,
+        "Concepto Detraccion": None,
+        "Origen Tasa": None,
         "% Aplicado": None,
         "Monto Detraccion/Retencion": None,
         "Neto a Pagar": None,
@@ -187,11 +283,29 @@ def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros
     # 1. La detraccion declarada en el comprobante manda sobre cualquier calculo.
     if sujeta:
         monto = monto_detraccion
-        por_defecto = False
+        tasas = parametros.get("tasas") or get_tasas()
+        origen = "comprobante" if porcentaje is not None else None
+        concepto = tasas.get(codigo, (None, None))[0] if codigo else None
+
+        # Nivel 2: el comprobante trae el codigo pero no la tasa.
+        if porcentaje is None and codigo and codigo in tasas:
+            porcentaje = tasas[codigo][1]
+            origen = "tabla"
+
+        # Nivel 3: no trae ninguno de los dos; se deduce del concepto.
+        if porcentaje is None:
+            codigo_probable = buscar_codigo_por_concepto(glosa)
+            if codigo_probable and codigo_probable in tasas:
+                codigo = codigo or codigo_probable
+                concepto = tasas[codigo_probable][0]
+                porcentaje = tasas[codigo_probable][1]
+                origen = "concepto"
 
         if porcentaje is None and parametros.get("tasa_detraccion_defecto"):
             porcentaje = parametros["tasa_detraccion_defecto"]
-            por_defecto = True
+            origen = "configuracion"
+
+        por_defecto = origen == "configuracion"
 
         if monto is None and porcentaje is not None:
             bruto = total * porcentaje / 100
@@ -208,7 +322,13 @@ def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros
                 "% Aplicado": None,
             }
 
-        if por_defecto:
+        if origen == "tabla":
+            motivo = (f"Detraccion sin porcentaje impreso: {porcentaje}% del codigo "
+                      f"{codigo} ({concepto}) segun la tabla")
+        elif origen == "concepto":
+            motivo = (f"Detraccion sin porcentaje ni codigo impresos: {porcentaje}% "
+                      f"deducido del concepto ({concepto}). VERIFICAR")
+        elif origen == "configuracion":
             motivo = f"Detraccion sin porcentaje impreso: se aplico el {porcentaje}% configurado"
         elif porcentaje is not None:
             motivo = f"El comprobante indica detraccion del {porcentaje}%"
@@ -219,6 +339,8 @@ def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros
             "Afecto a": DETRACCION,
             "Motivo": motivo,
             "Codigo Detraccion": codigo,
+            "Concepto Detraccion": concepto,
+            "Origen Tasa": origen,
             "% Aplicado": porcentaje,
             "Monto Detraccion/Retencion": monto,
             "Neto a Pagar": round(total - monto, 2),

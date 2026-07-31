@@ -119,6 +119,36 @@ Detracción y retención nunca se aplican juntas. La detracción se redondea a
 soles enteros cuando la factura es en soles; en dólares conserva los decimales,
 porque el redondeo corresponde al monto en soles del día del depósito.
 
+### De dónde sale la tasa de detracción
+
+Se busca en tres niveles, de más fiable a menos, y **la columna `Origen Tasa` de
+la hoja ampliada dice cuál se usó** en cada fila:
+
+| Nivel | Cuándo | `Origen Tasa` |
+|---|---|---|
+| 1 | El comprobante imprime el porcentaje | `comprobante` |
+| 2 | Imprime el código del Anexo pero no la tasa | `tabla` |
+| 3 | No imprime ninguno: se deduce de la glosa | `concepto` |
+
+Si ninguno da resultado, la fila sale para completar a mano en vez de arriesgar
+un número. **El nivel 3 marca el motivo con "VERIFICAR"**, porque la descripción
+engaña: un `MANTENIMIENTO` dentro de un arrendamiento tributa como arrendamiento
+(019, 10%) y no como mantenimiento de bienes muebles (020, 12%).
+
+**La tabla de tasas hay que confirmarla y mantenerla.** Las modifica SUNAT por
+resolución, y la que va en el código es un punto de partida. Se puede corregir
+desde los secrets sin tocar código:
+
+```toml
+[detraccion_tasas]
+"019" = 10
+"020" = 12
+"022" = 12
+```
+
+La tabla vigente se puede consultar dentro de la propia app, en el desplegable
+"Tabla de tasas de detracción por código" de la pantalla de Pagos.
+
 **El motivo va escrito en cada fila** de la hoja ampliada — "Importe de S/ 24.03
 menor o igual al umbral de S/ 700", "El comprobante indica detracción del
 12.0%", "Supera el umbral pero el proveedor figura como Agente de retención" —
