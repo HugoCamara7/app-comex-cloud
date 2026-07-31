@@ -25,6 +25,8 @@ from forus_comprobante import (
     agrupar_documentos,
     deducir_totales_por_suma,
     detect_numero_factura,
+    extraer_lineas_detalle,
+    zona_detalle,
     detect_tipo_documento,
 )
 
@@ -111,24 +113,34 @@ ITEM_COLUMNS = [
     "Importe",
 ]
 
-# Pantalla de Pagos: una fila por comprobante, con la decision ya tomada.
+# Hoja Pagos: las columnas del control de Contabilidad, en su orden, para
+# pegarlas directo. "D" es detraccion y "R" retencion.
 PAGOS_COLUMNS = [
-    "Numero",
+    "FECHA",
+    "RUC",
+    "PROVEEDOR",
+    "DOCUMENTO",
+    "GLOSA",
+    "IMPORTE",
+    "D/R",
+    "%",
+    "DETRACCION/RETENCION",
+    "ANTICIPOS",
+    "MONTO A PAGAR",
+]
+
+# Las mismas filas con todo lo que se leyo, para revisar de donde sale cada cosa.
+PAGOS_AMPLIADO_COLUMNS = PAGOS_COLUMNS + [
+    "MONEDA",
     "Tipo Documento",
-    "Fecha Emision",
     "Fecha Vencimiento",
-    "RUC Emisor",
-    "Razon Social Emisor",
-    "Moneda",
     "Tipo de Cambio",
-    "Importe Total",
     "Importe en Soles",
     "Afecto a",
-    "% Aplicado",
-    "Monto Detraccion/Retencion",
-    "Neto a Pagar",
     "Motivo",
     "Codigo Detraccion",
+    "Op. Gravadas",
+    "IGV",
     "Orden de Compra",
     "Forma de Pago",
     "PDF File",
@@ -293,6 +305,31 @@ def extraer_cabecera(text, pagina_inicial, paginas):
     return fila
 
 
+# Restos del pie de la factura que las tablas arrastran como si fueran items.
+RUIDO_DESCRIPCION = (
+    "SON ", "SON:", "TOTAL", "SUB TOTAL", "SUBTOTAL", "OP.", "IGV", "I.G.V.",
+    "DETRACCION", "DETRACCI", "SPOT", "OBLIGACIONES TRIBUTARIAS", "CUENTA",
+    "BANCO", "SUNAT", "RESOLUCION", "AUTORIZADO", "REPRESENTACION", "PLAZO DE PAGO",
+    "AGENTE", "AGENTES", "DOCUMENTOS REFERENCIADOS", "CODIGO DETRACC",
+    "PORCENTAJE", "LEYENDA", "INFORMACION",
+)
+
+
+def descripcion_util(descripcion):
+    """Descarta lo que no es un concepto sino texto del pie del comprobante."""
+    if not descripcion:
+        return False
+
+    plano = normalize(descripcion)
+    if any(ruido in plano for ruido in RUIDO_DESCRIPCION):
+        return False
+    # El importe en letras ("...CON 34/100 DOLARES") llega partido en celdas y
+    # pierde el "SON:" del principio, pero conserva siempre los centimos.
+    if re.search(r"\d{1,2}\s*/\s*100", descripcion):
+        return False
+    return len(re.findall(r"[A-Za-z]", descripcion)) >= 4
+
+
 def mapear_columnas(encabezado):
     """Empareja las celdas del encabezado de una tabla con nuestros campos."""
     mapa = {}
@@ -341,7 +378,7 @@ def items_desde_tablas(tables, pagina):
 
             if not descripcion and importe is None:
                 continue
-            if descripcion and normalize(descripcion).startswith(("SON ", "TOTAL", "SUB TOTAL")):
+            if not descripcion_util(descripcion):
                 continue
 
             items.append({
@@ -369,7 +406,7 @@ def items_desde_texto(text, pagina):
     """Respaldo para PDFs sin tablas: lineas 'cantidad UM descripcion unit importe'."""
     items = []
 
-    for linea in split_lines(text):
+    for linea in zona_detalle(text):
         plano = normalize(linea)
         if plano.startswith(("SON ", "TOTAL", "SUB TOTAL", "OP.", "IGV", "IMPORTE TOTAL")):
             continue
@@ -408,6 +445,56 @@ def leer_paginas(uploaded_file):
     return paginas
 
 
+def construir_glosa(items, maximo=110):
+    """Concepto del comprobante: las descripciones de sus lineas, sin repetir."""
+    vistas = []
+    for item in items:
+        descripcion = collapse_spaces(item.get("Descripcion"))
+        if descripcion and descripcion not in vistas:
+            vistas.append(descripcion)
+
+    if not vistas:
+        return None
+
+    glosa = " / ".join(vistas)
+    return glosa if len(glosa) <= maximo else glosa[:maximo - 3].rstrip() + "..."
+
+
+def construir_fila_pago(cabecera):
+    """Traduce el comprobante a las columnas del control de Contabilidad.
+
+    Una nota de credito entra en negativo: en un control de pagos lo que hace
+    es restar de lo que se le debe al proveedor.
+    """
+    importe = cabecera.get("Importe Total")
+    monto = cabecera.get("Monto Detraccion/Retencion")
+    afecto = cabecera.get("Afecto a")
+
+    if importe is not None and cabecera.get("Tipo Documento") == "Nota de Credito":
+        importe = -abs(importe)
+
+    marca = {tributario.DETRACCION: "D", tributario.RETENCION: "R"}.get(afecto)
+
+    a_pagar = None
+    if importe is not None:
+        a_pagar = round(importe - (monto or 0), 2)
+
+    return {
+        "FECHA": cabecera.get("Fecha Emision"),
+        "RUC": cabecera.get("RUC Emisor"),
+        "PROVEEDOR": cabecera.get("Razon Social Emisor"),
+        "DOCUMENTO": cabecera.get("Numero"),
+        "GLOSA": cabecera.get("Glosa"),
+        "IMPORTE": importe,
+        "D/R": marca,
+        "%": cabecera.get("% Aplicado"),
+        "DETRACCION/RETENCION": monto,
+        "ANTICIPOS": None,  # no viene en el PDF, se completa a mano
+        "MONTO A PAGAR": a_pagar,
+        "MONEDA": cabecera.get("Moneda"),
+    }
+
+
 def process_pdf(uploaded_file, parametros=None):
     """Devuelve (documentos, items, auditoria) para un PDF."""
     parametros = parametros or tributario.get_parametros()
@@ -427,22 +514,29 @@ def process_pdf(uploaded_file, parametros=None):
         )
         cabecera["PDF File"] = uploaded_file.name
 
-        # Detraccion o retencion: se decide aqui, con el texto completo del
-        # comprobante delante, y viaja ya resuelto hasta el Excel de Pagos.
-        cabecera.update(tributario.evaluar(
-            cabecera.get("Importe Total"),
-            cabecera.get("Moneda"),
-            cabecera.get("Tipo de Cambio"),
-            texto_completo,
-            monto_detraccion=cabecera.get("Detraccion Monto"),
-            parametros=parametros,
-        ))
-
         items = []
         for pagina in documento["paginas"]:
             encontrados = items_desde_tablas(pagina["tablas"], pagina["numero"])
             if not encontrados:
                 encontrados = items_desde_texto(pagina["texto"], pagina["numero"])
+            if not encontrados:
+                # Ultimo recurso: el lector de lineas acotado a la zona de
+                # detalle, que aguanta los formatos de tabla mas irregulares.
+                encontrados = [
+                    {
+                        "Pagina": pagina["numero"],
+                        "Codigo": fila["codigo"],
+                        "Descripcion": fila["concepto"],
+                        "Cantidad": fila["cantidad"],
+                        "UM": fila["unidad"],
+                        "Valor Unitario": None,
+                        "Precio Unitario": None,
+                        "Descuento": None,
+                        "Importe": fila["numeros"][-1] if fila["numeros"] else None,
+                    }
+                    for fila in extraer_lineas_detalle(pagina["texto"])
+                    if descripcion_util(fila["concepto"])
+                ]
             items.extend(encontrados)
 
         for orden, item in enumerate(items, start=1):
@@ -456,6 +550,22 @@ def process_pdf(uploaded_file, parametros=None):
             })
 
         cabecera["Items"] = len(items)
+        cabecera["Glosa"] = construir_glosa(items)
+
+        # Detraccion o retencion: se decide aqui, con el texto completo del
+        # comprobante delante, y viaja ya resuelto hasta el Excel de Pagos.
+        cabecera.update(tributario.evaluar(
+            cabecera.get("Importe Total"),
+            cabecera.get("Moneda"),
+            cabecera.get("Tipo de Cambio"),
+            texto_completo,
+            monto_detraccion=cabecera.get("Detraccion Monto"),
+            parametros=parametros,
+            igv=cabecera.get("IGV"),
+            tipo_documento=cabecera.get("Tipo Documento"),
+        ))
+        cabecera.update(construir_fila_pago(cabecera))
+
         cabecera["Observaciones"] = faltantes(cabecera, CAMPOS_OBLIGATORIOS)
 
         filas_documento.append(cabecera)
@@ -570,6 +680,9 @@ def build_excel_pagos(files):
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         pd.DataFrame(documentos).reindex(columns=PAGOS_COLUMNS).to_excel(
             writer, index=False, sheet_name="Pagos",
+        )
+        pd.DataFrame(documentos).reindex(columns=PAGOS_AMPLIADO_COLUMNS).to_excel(
+            writer, index=False, sheet_name="Pagos ampliado",
         )
         pd.DataFrame(resumen).reindex(columns=SUMMARY_COLUMNS).to_excel(
             writer, index=False, sheet_name="Resumen",
@@ -686,10 +799,8 @@ ICONO_COSTOS = """
 </svg>
 """
 
-COLUMNAS_PAGOS_PREVIA = [
-    "Numero", "Fecha Emision", "Razon Social Emisor", "Moneda", "Importe Total",
-    "Afecto a", "% Aplicado", "Monto Detraccion/Retencion", "Neto a Pagar", "Motivo",
-]
+# Se muestra la hoja Pagos tal cual saldra en el Excel.
+COLUMNAS_PAGOS_PREVIA = PAGOS_COLUMNS
 
 COLUMNAS_COSTOS_PREVIA = [
     "Numero", "Tipo Documento", "Fecha Emision", "RUC Emisor",
