@@ -9,7 +9,7 @@ dos identifiquen igual.
 """
 import re
 
-from forus_ocr import estado_ocr
+from forus_ocr import estado_ocr, ultimo_error
 from forus_parsing import (
     REEMPLAZO,
     collapse_spaces,
@@ -126,13 +126,22 @@ def diagnostico_lectura(paginas):
     if not texto.strip():
         disponible, motivo = estado_ocr()
         if not disponible:
-            return (f"PDF escaneado y el OCR no esta disponible. {motivo}")
+            return f"PDF escaneado y el OCR no esta disponible. {motivo}"
+        fallo = ultimo_error()
+        if fallo:
+            return f"PDF escaneado y el OCR no pudo leerlo. {fallo}"
         return ("PDF escaneado: el OCR no logro sacar texto de la imagen. "
                 "Hace falta el PDF original que emitio el proveedor")
 
     if vacias:
         detalle = ("Paginas escaneadas (sin texto): "
                    + ", ".join(str(n) for n in vacias) + ". ")
+        # Si quedaron paginas sin leer, hay que decir por que no las cogio el OCR.
+        disponible, motivo = estado_ocr()
+        if not disponible:
+            detalle += f"El OCR no esta disponible: {motivo}. "
+        elif ultimo_error():
+            detalle += f"{ultimo_error()}. "
     else:
         detalle = ""
 

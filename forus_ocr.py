@@ -26,6 +26,14 @@ RESOLUCION = 200
 CONFIANZA_MINIMA = 0.5
 
 
+# Ultimo fallo del OCR, para poder contarlo en la hoja Auditoria.
+_ULTIMO_ERROR = {"motivo": None}
+
+
+def ultimo_error():
+    return _ULTIMO_ERROR["motivo"]
+
+
 def estado_ocr():
     """(disponible, motivo). El motivo explica que falta cuando no se puede usar.
 
@@ -166,9 +174,16 @@ def texto_por_ocr(datos_pdf, numeros_pagina):
     import numpy as np
     import pypdfium2 as pdfium
 
-    motor = _motor()
-    resultados = {}
+    try:
+        motor = _motor()
+    except Exception as error:
+        # Sin motor no hay nada que hacer, pero el fallo tiene que verse: antes
+        # se tragaba en silencio y las facturas salian como ilegibles sin decir
+        # que lo que faltaba era una libreria.
+        _ULTIMO_ERROR["motivo"] = f"El motor de OCR no se pudo cargar: {error}"
+        return {}
 
+    resultados = {}
     documento = pdfium.PdfDocument(io.BytesIO(datos_pdf))
     try:
         for numero in numeros_pagina:
@@ -178,8 +193,9 @@ def texto_por_ocr(datos_pdf, numeros_pagina):
             try:
                 imagen = documento[indice].render(scale=RESOLUCION / 72).to_pil()
                 bloques = _bloques(motor(np.array(imagen)))
-            except Exception:
-                continue  # una pagina ilegible no debe frenar a las demas
+            except Exception as error:  # una pagina ilegible no frena a las demas
+                _ULTIMO_ERROR["motivo"] = f"El OCR fallo en la pagina {numero}: {error}"
+                continue
             texto = _agrupar_en_lineas(bloques)
             if texto.strip():
                 resultados[numero] = texto
