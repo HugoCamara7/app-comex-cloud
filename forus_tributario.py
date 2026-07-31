@@ -49,9 +49,15 @@ SENALES_SIN_RETENCION = (
     "BUENOS CONTRIBUYENTES",
 )
 
+# "Porcentaje Detracción: 10.0%", "DETRACCION DEL 10 %" y tambien la forma sin
+# simbolo que usa la representacion impresa de SUNAT: "Porcentaje de detracción: 10.00".
 PORCENTAJE_DETRACCION_RE = re.compile(
     r"(?:PORCENTAJE\s+(?:DE\s+)?DETRACCION|DETRACCION\s+DEL?|SPOT)"
     r"[^\d%]{0,40}?(\d{1,2}(?:[.,]\d{1,2})?)\s*%",
+    re.I,
+)
+PORCENTAJE_DETRACCION_SIN_SIMBOLO_RE = re.compile(
+    r"PORCENTAJE\s+(?:DE\s+)?DETRACCI[OÓ]N\s*[:.]?\s*(\d{1,2}(?:[.,]\d{1,2})?)",
     re.I,
 )
 PORCENTAJE_SUELTO_RE = re.compile(r"(\d{1,2}(?:[.,]\d{1,2})?)\s*%")
@@ -94,7 +100,13 @@ def detectar_detraccion(texto):
     match = PORCENTAJE_DETRACCION_RE.search(texto or "")
     if match:
         porcentaje = parse_amount(match.group(1))
-    else:
+
+    if porcentaje is None:
+        match = PORCENTAJE_DETRACCION_SIN_SIMBOLO_RE.search(texto or "")
+        if match:
+            porcentaje = parse_amount(match.group(1))
+
+    if porcentaje is None:
         # Algunos lo imprimen suelto, en la misma linea de la cuenta del Banco
         # de la Nacion. Solo se acepta si es una tasa de detraccion plausible.
         for linea in (texto or "").splitlines():
@@ -131,7 +143,8 @@ def importe_en_soles(total, moneda, tipo_cambio):
     return None
 
 
-def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros=None):
+def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros=None,
+            igv=None, tipo_documento=None):
     """Decide si la factura va con detraccion, con retencion o con ninguna.
 
     Devuelve las columnas listas para el Excel, incluido el motivo, para que no
@@ -158,6 +171,19 @@ def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros
         vacio["Motivo"] = "No se pudo leer el importe total"
         return vacio
 
+    # 0. Una nota de credito no genera detraccion ni retencion propias: lo que
+    # hace es restar del total a pagar al proveedor.
+    if tipo_documento == "Nota de Credito":
+        return {
+            "Afecto a": NO_AFECTO,
+            "Motivo": "Nota de credito: resta del total a pagar, sin detraccion ni retencion propia",
+            "Codigo Detraccion": None,
+            "% Aplicado": None,
+            "Monto Detraccion/Retencion": 0.0,
+            "Neto a Pagar": total,
+            "Importe en Soles": en_soles,
+        }
+
     # 1. La detraccion declarada en el comprobante manda sobre cualquier calculo.
     if sujeta:
         monto = monto_detraccion
@@ -168,8 +194,11 @@ def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros
             por_defecto = True
 
         if monto is None and porcentaje is not None:
-            # La detraccion se redondea a soles enteros.
-            monto = float(round(total * porcentaje / 100))
+            bruto = total * porcentaje / 100
+            # El deposito de la detraccion se hace en soles enteros. En una
+            # factura en dolares el importe se conserva con sus decimales: el
+            # redondeo corresponde al monto en soles del dia del deposito.
+            monto = float(round(bruto)) if moneda in (None, "PEN") else round(bruto, 2)
 
         if monto is None:
             return {
@@ -212,7 +241,20 @@ def evaluar(total, moneda, tipo_cambio, texto, monto_detraccion=None, parametros
             "Importe en Soles": en_soles,
         }
 
-    # 3. Pasa el umbral: retencion, salvo que el proveedor este excluido.
+    # 3. La retencion es del IGV: sin IGV que retener, no corresponde. Pasa con
+    # los intereses moratorios y demas operaciones inafectas.
+    if igv is not None and igv == 0:
+        return {
+            "Afecto a": NO_AFECTO,
+            "Motivo": "Operacion sin IGV (inafecta o exonerada): no hay retencion que aplicar",
+            "Codigo Detraccion": None,
+            "% Aplicado": None,
+            "Monto Detraccion/Retencion": 0.0,
+            "Neto a Pagar": total,
+            "Importe en Soles": en_soles,
+        }
+
+    # 4. Pasa el umbral: retencion, salvo que el proveedor este excluido.
     excluido = proveedor_sin_retencion(texto)
     if excluido:
         return {

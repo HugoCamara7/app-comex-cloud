@@ -369,10 +369,13 @@ def detect_currency_document(text):
     return detect_currency(text)
 
 
-# Sufijos de razon social peruana, tolerando puntos y espacios sueltos.
+# Sufijos de razon social peruana, tolerando puntos y espacios sueltos. No se
+# exige que cierren la linea: hay proveedores que imprimen el nombre y el
+# numero de comprobante juntos ("STRIP CENTERS DEL PERU S.A.C. F001 N 00002037"),
+# y en ese caso el nombre termina donde termina el sufijo.
 SUFIJO_SOCIETARIO_RE = re.compile(
     r"(?i)\b(?:S\.?\s*A\.?\s*C\.?|S\.?\s*A\.?\s*A\.?|S\.?\s*R\.?\s*L\.?"
-    r"|E\.?\s*I\.?\s*R\.?\s*L\.?|S\.?\s*A\.?|SAC|SRL|SAA|EIRL)\s*$"
+    r"|E\.?\s*I\.?\s*R\.?\s*L\.?|S\.?\s*A\.?|SAC|SRL|SAA|EIRL)(?:\s|$)"
 )
 
 TITULOS_DOCUMENTO = (
@@ -403,7 +406,12 @@ def find_razon_social_emisor(text, excluir=()):
             continue
         if re.search(r"\b(?:10|15|16|17|20)\d{9}\b", plano):
             continue
-        if not SUFIJO_SOCIETARIO_RE.search(limpia):
+
+        sufijo = SUFIJO_SOCIETARIO_RE.search(limpia)
+        if not sufijo:
+            continue
+        limpia = collapse_spaces(limpia[:sufijo.end()])
+        if not limpia:
             continue
 
         # El RUC suele meterse entre las dos lineas del nombre, asi que se mira
@@ -420,8 +428,12 @@ def find_razon_social_emisor(text, excluir=()):
             ):
                 continue
 
+            # Solo se une cuando lo que separa las dos mitades del nombre es la
+            # linea del RUC. Si la linea de arriba es adyacente, no forma parte
+            # del nombre: suele ser el centro comercial ("INOUTLET FAUCETT").
             es_continuacion = (
-                6 <= len(previa) <= 60
+                salto == 2
+                and 6 <= len(previa) <= 60
                 and not any(plano_previa.startswith(t) for t in TITULOS_DOCUMENTO)
                 and not re.search(r"\d", previa)
                 and not any(termino in plano_previa for termino in excluir_plano)

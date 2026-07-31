@@ -93,28 +93,36 @@ Una fila por comprobante, con **la decisión de detracción o retención ya
 tomada**, que era el objetivo: que nadie tenga que repasarlo factura por
 factura.
 
+La hoja **Pagos** trae **solo tus once columnas, en tu orden**:
+
+| FECHA | RUC | PROVEEDOR | DOCUMENTO | GLOSA | IMPORTE | D/R | % | DETRACCION/RETENCION | ANTICIPOS | MONTO A PAGAR |
+
+`D` es detracción y `R` retención. **ANTICIPOS va vacía**: no está en el PDF, se
+completa a mano, y el `MONTO A PAGAR` la descuenta cuando la llenes.
+Al lado va la hoja **Pagos ampliado**, con la moneda, el tipo de documento, el
+IGV, el motivo de la decisión y de qué archivo salió cada fila.
+
 La regla se aplica en este orden:
 
+0. **Una nota de crédito** no genera detracción ni retención propia: entra en
+   **negativo** para que reste del total a pagar al proveedor.
 1. **Si el comprobante declara detracción**, manda eso, con el porcentaje que
    trae impreso. El proveedor ya determinó el tipo de servicio y su tasa.
 2. **Si no hay detracción y el total no pasa de S/ 700**, no corresponde
    retención.
-3. **Si pasa de S/ 700**, corresponde retención del 3%, salvo que el proveedor
+3. **Si la operación no tiene IGV** (inafecta o exonerada, como los intereses
+   moratorios), tampoco: la retención es del IGV, y sin IGV no hay qué retener.
+4. **Si pasa de S/ 700**, corresponde retención del 3%, salvo que el proveedor
    figure como agente de retención, agente de percepción o buen contribuyente.
 
 Detracción y retención nunca se aplican juntas. La detracción se redondea a
-soles enteros, como corresponde.
+soles enteros cuando la factura es en soles; en dólares conserva los decimales,
+porque el redondeo corresponde al monto en soles del día del depósito.
 
-Columnas de la hoja **Pagos**: número, tipo, fechas, RUC y razón social del
-proveedor, moneda, tipo de cambio, importe total, **importe en soles**,
-**Afecto a** (`DETRACCION` / `RETENCION` / `NO AFECTO` / `REVISAR`),
-**% aplicado**, **monto**, **neto a pagar**, **motivo**, código de detracción,
-orden de compra y forma de pago.
-
-**El motivo va escrito en cada fila** — "Importe de S/ 24.03 menor o igual al
-umbral de S/ 700", "El comprobante indica detracción del 12.0%", "Supera el
-umbral pero el proveedor figura como Agente de retención"— para poder
-verificarlo de un vistazo.
+**El motivo va escrito en cada fila** de la hoja ampliada — "Importe de S/ 24.03
+menor o igual al umbral de S/ 700", "El comprobante indica detracción del
+12.0%", "Supera el umbral pero el proveedor figura como Agente de retención" —
+para poder verificarlo de un vistazo.
 
 **Cuando falta un dato, la fila sale como `REVISAR` en vez de arriesgar un
 número.** Pasa en dos casos: factura en dólares sin tipo de cambio con el que
@@ -214,10 +222,22 @@ proveedor excluido, dólares con y sin tipo de cambio, y el caso sin importe.
 `st.exception` ni `st.error`, permisos por usuario y destino inválido guardado.
 Arranque headless HTTP 200.
 
-**Contra tus 7 PDFs reales**, por Arriendos: 7 de 7 leídas, 7 de 7 cuadran,
-10 filas de control. Por Pagos: 7 comprobantes bien identificados, con Jockey
-al 10%, Real Plaza al 12% y Lambramani al 10% de detracción, y las dos notas
-de débito de S/ 513.50 correctamente por debajo del umbral.
+**Contra las facturas reales.** Arriendos: 7 de 7 leídas, 7 de 7 cuadran, 10
+filas de control. Contabilidad - Pagos, con las 7 muestras de Contabilidad,
+**los 7 resultados coinciden con lo que indicó Contabilidad**:
+
+| Documento | Proveedor | Importe | D/R | % | Detracción | A pagar |
+|---|---|---|---|---|---|---|
+| F004-00330138 | Jockey Plaza | US$ 6.800,34 | D | 10 | 680,03 | 6.120,31 |
+| F004-00331093 | Jockey Plaza | S/ 536,75 | | | 0,00 | 536,75 |
+| F003-00011544 | Lambramani | S/ 11.027,87 | D | 10 | 1.103,00 | 9.924,87 |
+| F001-00002037 | Strip Centers (NC) | S/ −11.745,83 | | | 0,00 | −11.745,83 |
+| F005-00000269 | Strip Centers (ND) | S/ 82,10 | | | 0,00 | 82,10 |
+| F002-00026607 | Inversiones Castelar | US$ 354,00 | D | 10 | 35,40 | 318,60 |
+| E001-4012 | ILP Soluciones | S/ 2.242,00 | D | 10 | 224,00 | 2.018,00 |
+
+En ILP el resultado se puede contrastar contra el propio PDF, que imprime
+"Monto detracción: S/ 224.00" y "Monto neto pendiente de pago: S/ 2,018.00".
 
 ---
 
