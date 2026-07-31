@@ -890,15 +890,26 @@ def render_pagos():
 
     with st.expander("Tabla de tasas de detraccion por codigo"):
         st.caption(
-            "Solo se usa cuando el comprobante no imprime el porcentaje. Si lo "
-            "imprime, manda siempre el del documento. Las tasas las cambia SUNAT "
-            "por resolucion: confirmalas con Contabilidad y corrigelas desde los "
-            "secrets, en la seccion [detraccion_tasas], sin tocar el codigo."
+            "Esta tabla solo se usa cuando el comprobante no imprime el porcentaje. "
+            "Si lo imprime, manda siempre el del documento. Las tasas las cambia "
+            "SUNAT por resolucion: las marcadas como 'Por validar' hay que "
+            "contrastarlas con la tabla oficial antes de confiar en ellas, y se "
+            "corrigen desde los secrets en la seccion [detraccion_tasas], sin "
+            "tocar el codigo."
         )
         st.dataframe(
             pd.DataFrame(
                 [
-                    {"Codigo": codigo, "Bien o servicio": nombre, "Tasa %": tasa}
+                    {
+                        "Codigo": codigo,
+                        "Bien o servicio": nombre,
+                        "Tasa %": tasa,
+                        "Estado": (
+                            "Contrastada con factura"
+                            if codigo in tributario.CODIGOS_VERIFICADOS
+                            else "Por validar con Contabilidad"
+                        ),
+                    }
                     for codigo, (nombre, tasa) in sorted(tributario.get_tasas().items())
                 ]
             ),
