@@ -54,16 +54,33 @@ def get_user_modules(email):
 
     return [clave for clave in MODULOS if clave in permitidos]
 
+def usuarios_autorizados():
+    """Correos con acceso: los que figuren en la seccion [auth] de los secrets.
+
+    ALLOWED_AUTH_USERS solo se usa si no hay secrets configurados, para no
+    dejar la aplicacion sin acceso.
+    """
+    try:
+        configurados = dict(st.secrets.get("auth", {}))
+    except Exception:
+        configurados = {}
+    if configurados:
+        return [str(correo).strip().lower() for correo in configurados]
+    return list(ALLOWED_AUTH_USERS)
+
+
 def get_auth_passwords():
     try:
         configured = dict(st.secrets.get("auth", {}))
     except Exception:
         configured = {}
-    return {email: str(configured.get(email, "")) for email in ALLOWED_AUTH_USERS}
+    normalizado = {str(correo).strip().lower(): str(clave)
+                   for correo, clave in configured.items()}
+    return {email: normalizado.get(email, "") for email in usuarios_autorizados()}
 
 
 def is_authenticated():
-    return bool(st.session_state.get("auth_ok")) and st.session_state.get("auth_user") in ALLOWED_AUTH_USERS
+    return bool(st.session_state.get("auth_ok")) and st.session_state.get("auth_user") in usuarios_autorizados()
 
 
 def current_user_modules():
@@ -154,7 +171,7 @@ def render_login_screen():
 
     if submitted:
         auth_passwords = get_auth_passwords()
-        if email not in ALLOWED_AUTH_USERS:
+        if email not in usuarios_autorizados():
             st.error("Este correo no tiene acceso autorizado.")
             st.stop()
         expected_password = auth_passwords.get(email)
