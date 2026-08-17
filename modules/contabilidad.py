@@ -876,10 +876,7 @@ def avisar_no_leidos(archivos, documentos):
 
 def _cargar_comprobantes(clave, titulo):
     """Bloques 1 y 2 de la pantalla: cargar archivos y listarlos."""
-    st.markdown(
-        f'<div class="work-card upload-wrap acct"><h3>{titulo}</h3>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="work-card upload-wrap acct"><h3>{titulo}</h3></div>', unsafe_allow_html=True)
     uploaded_files = st.file_uploader(
         "Subir PDFs de comprobantes",
         type=["pdf"],
@@ -887,7 +884,6 @@ def _cargar_comprobantes(clave, titulo):
         label_visibility="collapsed",
         key=f"{clave}_uploader",
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
     open_card("2. Archivos cargados", kicker="Control de entrada")
 
@@ -921,8 +917,6 @@ def _cargar_comprobantes(clave, titulo):
 def render_pagos():
     """Pantalla de Contabilidad - Pagos."""
     parametros = tributario.get_parametros()
-    st.markdown('<div class="app-shell">', unsafe_allow_html=True)
-
     render_hero(
         "CONTABILIDAD - PAGOS",
         'Comprobantes <span style="color:#8ff0cf">&rsaquo;</span> Detraccion o retencion resuelta',
@@ -1047,13 +1041,10 @@ def render_pagos():
         ("Nada inventado", "Si falta un dato para decidir, la fila sale como REVISAR en vez de arriesgar un numero."),
     ])
 
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_costos():
     """Pantalla de Contabilidad - Costos."""
-    st.markdown('<div class="app-shell">', unsafe_allow_html=True)
-
     render_hero(
         "CONTABILIDAD - COSTOS",
         'Comprobantes <span style="color:#8ff0cf">&rsaquo;</span> Parametros generales',
@@ -1146,4 +1137,3 @@ def render_costos():
         ("Nada inventado", "Lo que no se puede leer queda vacio y aparece en la hoja Auditoria."),
     ])
 
-    st.markdown("</div>", unsafe_allow_html=True)

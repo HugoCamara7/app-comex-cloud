@@ -17,6 +17,8 @@ import streamlit as st
 
 from forus_parsing import (
     buscar_mes_escrito,
+    buscar_periodo_documento,
+    fecha_es,
     collapse_spaces,
     cuadra,
     detect_currency_document,
@@ -33,6 +35,7 @@ from forus_parsing import (
     parse_amount,
     split_lines,
 )
+from forus_conceptos import concepto_o_original
 from forus_comprobante import (
     extraer_lineas_detalle,
     zona_detalle,
@@ -117,6 +120,145 @@ AUDIT_COLUMNS = ["PDF File", "Pagina", "Rol", "# Factura", "Detalle"]
 
 CAMPOS_OBLIGATORIOS = ["# Factura", "Fecha", "RAZON SOCIAL"]
 
+# Formatos de local vistos en las facturas: "S 120/122", "S209/211",
+# "LC-163A/161", "LC-149,LC-150", "P03-A01-L120", "LN20051", "NCL-222",
+# "N 238/240/242/244". La familia de letras va primero para no confundir un
+# codigo de local con un importe.
+LOCAL_CODIGO_RE = re.compile(
+    r"((?:LCS|LCN|LC|LN|LF|NCL|LZE|SA|[NSLP])\s?-?\s?"
+    r"\d{1,5}[A-Z]?(?:\s*[/,-]\s*(?:LC|L)?\s?\d{1,5}[A-Z]?)*)"
+)
+
+ETIQUETAS_LOCAL = [
+    "LOCAL COMERCIAL", "NOMBRE DE CONTRATO", "LOCAL", "TIENDA", "UNIDAD",
+]
+
+
+def extraer_local(texto):
+    """Codigo del local, probando los formatos de cada centro comercial.
+
+    Devuelve None si no aparece: es preferible dejarlo vacio y marcarlo que
+    inventar un codigo.
+    """
+    # 1) Etiqueta propia: "LOCAL :S146 HUSH PUPPIES".
+    valor = find_label_value(texto, ETIQUETAS_LOCAL, max_chars=45,
+                             requiere_separador=True)
+    if valor and not any(p in normalize(valor) for p in
+                         ("CONDICION", "PAGO", "ZONA", "PEDIDO", "ORDEN", "CODIGO")):
+        return collapse_spaces(valor)
+
+    # 2) "CON REFERENCIA A: S 120/122" y "Local: 99" dentro del detalle.
+    referencia = find_label_value(texto, ["CON REFERENCIA A", "LOCAL"],
+                                  max_chars=40, requiere_separador=True)
+    if referencia:
+        match = LOCAL_CODIGO_RE.search(normalize(referencia))
+        if match:
+            return collapse_spaces(match.group(1))
+        if re.fullmatch(r"[\dA-Z\s/,-]{1,20}", normalize(referencia) or ""):
+            return collapse_spaces(referencia)
+
+    # 3) La observacion de Jockey: "BSOUL / NCL-222 / NRO. DE CONTRATO: 9244",
+    #    donde el local es el campo del medio.
+    observacion = find_label_value(texto, ["OBSERVACION"], max_chars=70)
+    if observacion:
+        partes = [p.strip() for p in observacion.split("/") if p.strip()]
+        for parte in partes[1:]:
+            if "CONTRATO" in normalize(parte):
+                break
+            if re.search(r"\d", parte):
+                return collapse_spaces(parte)
+
+    return None
+
+
+def numerar_documento(texto):
+    """Serie y correlativo. Las notas de credito llevan NC delante."""
+    numero = detect_numero_factura(texto)
+    if not numero:
+        return None
+    tipo = detect_tipo_documento(texto)
+    if tipo == "Nota de Credito":
+        return f"NC {numero}"
+    if tipo == "Nota de Debito":
+        return f"ND {numero}"
+    return numero
+
+
+def mes_del_concepto(fila, texto_documento, cabecera):
+    """Mes facturado, con el orden de prioridad que pidio Contabilidad.
+
+    La fecha de emision es el ultimo recurso y siempre queda anotado: una
+    factura emitida el 05/08 que dice "CORRESPONDIENTE DEL 01.07 AL 31.07" es
+    de JULIO, no de agosto.
+    """
+    # 1) Periodo escrito en la propia linea del concepto.
+    if fila.get("desde"):
+        return mes_de_fecha(fila["desde"]), fila["desde"], None
+
+    # 2) Periodo declarado en cualquier parte del documento.
+    desde, _ = buscar_periodo_documento(texto_documento)
+    if desde:
+        return mes_de_fecha(desde), desde, None
+
+    # 3) Mes escrito con letras, "JULIO 2026 - GASTO COMUN FIJO".
+    escrito = buscar_mes_escrito(texto_documento)
+    if escrito:
+        return escrito, None, None
+
+    # 4) Solo entonces, el mes de emision, y avisando.
+    mes = mes_de_fecha(cabecera.get("Fecha"))
+    if mes:
+        return mes, None, "MES tomado de la fecha de emision: verificar"
+    return None, None, "No se pudo determinar el mes facturado"
+
+
+def clave_duplicado(fila):
+    """Identidad de una linea del control: factura + local + concepto + periodo."""
+    return (
+        fila.get("# Factura"),
+        normalize(fila.get("Tienda") or ""),
+        normalize(fila.get("Concepto") or ""),
+        fila.get("Periodo Desde"),
+    )
+
+
+def descartar_duplicados(filas):
+    """Quita las lineas repetidas y marca las que se contradicen.
+
+    Una factura si puede tener varios conceptos distintos, y hasta el mismo
+    concepto por periodos distintos. Lo que no puede es traer dos veces el
+    mismo concepto, el mismo periodo y el mismo importe: eso es que se leyo dos
+    veces la misma linea.
+    """
+    vistas = {}
+    resultado = []
+
+    for fila in filas:
+        clave = clave_duplicado(fila)
+        importe = fila.get("SOLES") if fila.get("SOLES") is not None else fila.get("DOLARES")
+        previa = vistas.get(clave)
+
+        if previa is None:
+            vistas[clave] = (fila, importe)
+            resultado.append(fila)
+            continue
+
+        fila_previa, importe_previo = previa
+        if importe is not None and importe_previo is not None and abs(importe - importe_previo) < 0.01:
+            continue  # linea repetida: se descarta sin ruido
+
+        # Mismo concepto y periodo pero importe distinto: puede ser legitimo,
+        # asi que se conserva y se marca para que alguien lo mire.
+        aviso = "Mismo concepto y periodo con importe distinto: revisar"
+        for objetivo in (fila, fila_previa):
+            objetivo["Observaciones"] = "; ".join(
+                x for x in [objetivo.get("Observaciones"), aviso] if x
+            )
+        resultado.append(fila)
+
+    return resultado
+
+
 def elegir_columna_valor(filas, base_imponible):
     """Posicion (contada desde el final) de la columna con el valor sin IGV.
 
@@ -146,6 +288,7 @@ def elegir_columna_valor(filas, base_imponible):
 
 
 def extraer_cabecera(texto, pagina_inicial):
+    tipo = detect_tipo_documento(texto)
     gravadas = find_money(texto, [
         "TOTAL GRAVADAS", "TOTAL GRAVADO", "OP. GRAVADAS", "OP. GRAVADA",
         "OPERACIONES GRAVADAS", "VALOR DE VENTA",
@@ -170,9 +313,7 @@ def extraer_cabecera(texto, pagina_inicial):
         if deducida is not None:
             gravadas, igv, total = deducida, igv_deducido, total_deducido
 
-    local = find_label_value(texto, [
-        "LOCAL COMERCIAL", "NOMBRE DE CONTRATO", "LOCAL",
-    ], max_chars=45, requiere_separador=True)
+    local = extraer_local(texto)
     # "LOCAL COMERCIAL" a veces es solo un encabezado de columna y lo que sigue
     # en la linea es otro encabezado, no un valor.
     if local and any(palabra in normalize(local) for palabra in
@@ -181,8 +322,8 @@ def extraer_cabecera(texto, pagina_inicial):
 
     fila = {
         "Pagina Inicial": pagina_inicial,
-        "# Factura": detect_numero_factura(texto),
-        "Tipo Documento": detect_tipo_documento(texto),
+        "# Factura": numerar_documento(texto),
+        "Tipo Documento": tipo,
         "Fecha": find_date(texto, [
             "FECHA DE EMISION", "FECHA EMISION", "F. EMISION", "FECHA",
         ]),
@@ -242,17 +383,18 @@ def construir_filas_control(cabecera, filas_detalle, nombre_archivo, mes_documen
         numeros = fila["numeros"]
         valor = numeros[posicion] if len(numeros) >= abs(posicion) else numeros[-1]
 
-        # El mes del periodo facturado; si el concepto no lo trae, el que
-        # aparezca escrito en el detalle y, como ultimo recurso, el de emision.
-        mes = mes_de_fecha(fila["desde"])
-        notas = []
-        if not mes and mes_documento:
-            mes = mes_documento
-            notas.append("MES tomado del texto del detalle")
-        if not mes:
-            mes = mes_de_fecha(cabecera.get("Fecha"))
-            if mes:
-                notas.append("MES tomado de la fecha de emision")
+        mes, periodo_desde, aviso_mes = mes_del_concepto(
+            fila, mes_documento or "", cabecera
+        )
+        if periodo_desde and not fila.get("desde"):
+            fila["desde"] = periodo_desde
+        notas = [aviso_mes] if aviso_mes else []
+
+        # El concepto se traduce a su nombre canonico; si no se reconoce, se
+        # deja la descripcion limpia y se marca para revision.
+        concepto, reconocido = concepto_o_original(fila["concepto"])
+        if not reconocido:
+            notas.append("Concepto sin normalizar: revisar")
         if not cuadro and base is not None:
             notas.append("El detalle no cuadra con la base imponible")
         if base is None:
@@ -264,10 +406,10 @@ def construir_filas_control(cabecera, filas_detalle, nombre_archivo, mes_documen
             con_igv = round(valor + igv_total * (valor / suma_base), 2)
 
         control.append({
-            "Fecha": cabecera.get("Fecha"),
+            "Fecha": fecha_es(cabecera.get("Fecha")),
             "Tienda": tienda,
             "MES": mes,
-            "Concepto": fila["concepto"],
+            "Concepto": concepto,
             "SOLES": valor if moneda == "PEN" else None,
             "DOLARES": valor if moneda == "USD" else None,
             "# Factura": cabecera.get("# Factura"),
@@ -286,7 +428,7 @@ def construir_filas_control(cabecera, filas_detalle, nombre_archivo, mes_documen
             "Observaciones": "; ".join(notas) if notas else None,
         })
 
-    return control, suma_base, cuadro
+    return descartar_duplicados(control), suma_base, cuadro
 
 
 def leer_paginas(uploaded_file):
@@ -345,7 +487,7 @@ def process_pdf(uploaded_file):
             cabecera,
             filas_detalle,
             uploaded_file.name,
-            mes_documento=buscar_mes_escrito("\n".join(zona_detalle(texto))),
+            mes_documento=texto,
         )
         filas_control.extend(control)
 
@@ -507,8 +649,6 @@ COLUMNAS_VISTA_PREVIA = CONTROL_COLUMNS
 
 def render():
     """Pantalla completa del modulo de arriendos."""
-    st.markdown('<div class="app-shell">', unsafe_allow_html=True)
-
     render_hero(
         "CONTROL DE ARRIENDOS",
         'Facturas de alquiler <span style="color:#d9c2ff">&rsaquo;</span> Excel de control',
@@ -536,7 +676,7 @@ def render():
         variante="hr",
     )
 
-    st.markdown('<div class="work-card upload-wrap hr"><h3>1. Cargar facturas</h3>', unsafe_allow_html=True)
+    st.markdown(f'<div class="work-card upload-wrap hr"><h3>1. Cargar facturas</h3></div>', unsafe_allow_html=True)
     uploaded_files = st.file_uploader(
         "Subir PDFs de facturas de alquiler",
         type=["pdf"],
@@ -544,7 +684,6 @@ def render():
         label_visibility="collapsed",
         key="alquileres_uploader",
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
     open_card("2. Archivos cargados", kicker="Control de entrada")
 
@@ -634,4 +773,3 @@ def render():
         ("Tienda o contrato", "La columna Tienda toma el local y, cuando la factura no lo trae, el numero de contrato."),
     ])
 
-    st.markdown("</div>", unsafe_allow_html=True)
