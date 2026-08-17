@@ -1249,23 +1249,32 @@ def render_file_list(filas, variante=""):
 
 
 def open_card(titulo, kicker=None, texto=None):
-    """Abre una tarjeta blanca de seccion. Hay que cerrarla con close_card()."""
+    """Encabezado de seccion.
+
+    Antes esto abria un <div> que cerraba close_card() en otro st.markdown. Ese
+    HTML a medias es lo que rompia la pantalla al procesar muchas facturas
+    ("NotFoundError: Failed to execute 'removeChild'"): React no puede
+    reconciliar un arbol cuyas etiquetas de apertura y cierre viven en nodos
+    distintos. Ahora cada bloque se emite entero y close_card no hace nada.
+    """
     bajada = f"<p>{_esc(texto)}</p>" if texto else ""
     lado = f'<div class="section-kicker">{_esc(kicker)}</div>' if kicker else ""
     st.markdown(
         f"""
-        <div class="work-card">
+        <div class="work-card section-only">
             <div class="section-head">
                 <div><h3>{_esc(titulo)}</h3>{bajada}</div>
                 {lado}
             </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
 
 
 def close_card():
-    st.markdown("</div>", unsafe_allow_html=True)
+    """Se conserva por compatibilidad: ya no hay ningun div que cerrar."""
+    return None
 
 
 def render_empty(texto):

@@ -491,3 +491,39 @@ def buscar_mes_escrito(texto):
         return None
     nombre = match.group(1)
     return "SETIEMBRE" if nombre == "SEPTIEMBRE" else nombre
+
+
+def fecha_es(fecha_iso):
+    """AAAA-MM-DD -> DD/MM/AAAA, que es como se lleva el control."""
+    if not fecha_iso:
+        return None
+    match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", str(fecha_iso).strip())
+    if not match:
+        return fecha_iso
+    anio, mes, dia = match.groups()
+    return f"{dia}/{mes}/{anio}"
+
+
+PERIODO_TEXTO_RE = re.compile(
+    r"(?:PERIODO|CORRESPONDIENTE\s+(?:AL?|DEL)|DEL|MES\s+DE)\s*[:.]?\s*"
+    r"(\d{1,2}[./\-]\d{1,2}[./\-]\d{4})",
+    re.I,
+)
+
+
+def buscar_periodo_documento(texto):
+    """Periodo facturado en cualquier parte del documento.
+
+    Se usa cuando el concepto no trae fechas propias: casi todas las facturas
+    de arriendo dicen en alguna linea a que mes corresponden, y ese mes es el
+    que vale, no el de emision.
+    """
+    desde, hasta, _ = extraer_periodo(texto)
+    if desde:
+        return desde, hasta
+
+    match = PERIODO_TEXTO_RE.search(texto or "")
+    if match:
+        return parse_date(match.group(1)), None
+
+    return None, None

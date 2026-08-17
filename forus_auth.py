@@ -93,77 +93,236 @@ def current_user_modules():
         st.session_state["auth_modules"] = guardados
     return guardados
 
+
+# El CSS del login es una cadena normal, no un f-string: las llaves van simples
+# y no hay forma de que una interpolacion mal escrita tire la pantalla.
+LOGIN_CSS = """
+<style>
+.stApp {
+    background:
+        radial-gradient(circle at 20% 15%, rgba(37,99,235,0.18), transparent 42%),
+        radial-gradient(circle at 82% 78%, rgba(20,168,232,0.14), transparent 46%),
+        linear-gradient(160deg, #0a1628 0%, #0f1f38 55%, #142238 100%) !important;
+}
+
+header[data-testid="stHeader"],
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+section[data-testid="stSidebar"],
+#MainMenu,
+footer {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+.block-container {
+    max-width: 470px !important;
+    padding-top: 3.5rem !important;
+    padding-bottom: 3rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+}
+
+/* Streamlit envuelve cada widget en un contenedor que, dentro de un flex, se
+   encoge al tamano de su contenido. Sin esto el boton de enviar se queda del
+   ancho de su texto por mucho que se le ponga width al propio boton. */
+div[data-testid="stForm"] [data-testid="stElementContainer"],
+div[data-testid="stForm"] [data-testid="stElementContainer"] > div {
+    width: 100% !important;
+}
+
+/* Cabecera de la tarjeta: se une con el formulario sin costura. */
+.login-hero {
+    background: linear-gradient(150deg, #1d4ed8 0%, #2563eb 55%, #1e40af 100%);
+    border-radius: 16px 16px 0 0;
+    padding: 2.4rem 2rem 2rem;
+    text-align: center;
+    box-shadow: 0 -1px 0 rgba(255,255,255,0.06) inset;
+}
+
+.login-logo {
+    width: 176px;
+    margin: 0 auto 1.5rem;
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 0.7rem 0.9rem;
+}
+
+.login-logo img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.login-title {
+    color: #ffffff;
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin: 0;
+}
+
+.login-subtitle {
+    margin-top: 0.6rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #bfdbfe;
+    letter-spacing: 0.02em;
+}
+
+/* El formulario es la mitad inferior de la misma tarjeta. */
+div[data-testid="stForm"] {
+    background: #ffffff !important;
+    border: 0 !important;
+    border-radius: 0 0 16px 16px !important;
+    padding: 1.9rem 2rem 2rem !important;
+    margin: 0 0 1.5rem !important;
+    box-shadow: 0 24px 60px rgba(2,10,25,0.45) !important;
+}
+
+div[data-testid="stForm"] label p {
+    color: #0f213f !important;
+    font-weight: 650 !important;
+    font-size: 0.86rem !important;
+}
+
+div[data-testid="stForm"] input {
+    min-height: 46px !important;
+    background: #f8fafc !important;
+    border: 1px solid #dbe3ee !important;
+    border-radius: 10px !important;
+    color: #0f213f !important;
+    font-size: 0.95rem !important;
+}
+
+div[data-testid="stForm"] input:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.15) !important;
+}
+
+div[data-testid="stForm"] [data-baseweb="input"] {
+    background: transparent !important;
+    border-radius: 10px !important;
+}
+
+/* El boton de enviar ocupa todo el ancho: hay que estirar tambien su
+   contenedor, porque por si solo se ajusta al texto. */
+div[data-testid="stForm"] div[data-testid="stFormSubmitButton"],
+div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] > div {
+    width: 100% !important;
+    display: block !important;
+}
+
+div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button,
+div[data-testid="stForm"] button[data-testid="stBaseButton-secondaryFormSubmit"] {
+    width: 100% !important;
+    min-height: 48px !important;
+    margin-top: 0.6rem !important;
+    background: linear-gradient(90deg, #1d4ed8, #2563eb) !important;
+    color: #ffffff !important;
+    border: 0 !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.01em;
+    box-shadow: 0 10px 24px rgba(29,78,216,0.35) !important;
+    transition: filter .15s ease, transform .15s ease;
+}
+
+div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button:hover {
+    filter: brightness(1.08);
+}
+
+div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button:active {
+    transform: translateY(1px);
+}
+
+/* El ojo de "mostrar contrasena" vive dentro del propio campo y heredaba el
+   gradiente azul de los botones generales: por eso salia un recuadro oscuro
+   ocupando medio campo. Aqui se devuelve a icono discreto. */
+div[data-testid="stForm"] [data-testid="stTextInputRootElement"] button,
+div[data-testid="stForm"] div[data-baseweb="input"] button {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 0.55rem !important;
+    background: transparent !important;
+    background-image: none !important;
+    border: 0 !important;
+    border-radius: 0 10px 10px 0 !important;
+    color: #64748b !important;
+    box-shadow: none !important;
+}
+
+div[data-testid="stForm"] [data-testid="stTextInputRootElement"] button:hover {
+    color: #1d4ed8 !important;
+    background: transparent !important;
+    background-image: none !important;
+}
+
+div[data-testid="stForm"] [data-testid="stTextInputRootElement"] {
+    border-radius: 10px !important;
+    background: #f8fafc !important;
+}
+
+.login-footer {
+    text-align: center;
+    color: #7f93b4;
+    font-size: 0.78rem;
+    line-height: 1.7;
+    letter-spacing: 0.01em;
+}
+
+.login-footer strong {
+    color: #a8bde0;
+    font-weight: 650;
+}
+
+div[data-testid="stAlert"] {
+    border-radius: 10px !important;
+    margin-top: 0.9rem !important;
+}
+</style>
+"""
+
+
 def render_login_screen():
+    """Pantalla de acceso: una sola tarjeta con la cabecera y el formulario."""
+    st.markdown(LOGIN_CSS, unsafe_allow_html=True)
+
     logo_base64 = image_to_base64(LOGO_PATH)
     logo_html = (
-        f'<img src="data:image/png;base64,{logo_base64}" alt="Forus">'
+        f'<div class="login-logo"><img src="data:image/png;base64,{logo_base64}" alt="Forus"></div>'
         if logo_base64
-        else '<div class="login-logo-text">FORUS</div><div class="login-logo-sub">CONSUMER FANATIC</div>'
+        else '<div class="login-title" style="letter-spacing:.1em">FORUS</div>'
     )
+
     st.markdown(
         f"""
-        <style>
-        .stApp {{
-            background: #142238 !important;
-        }}
-        header[data-testid="stHeader"],
-        [data-testid="stToolbar"],
-        [data-testid="stDecoration"],
-        section[data-testid="stSidebar"],
-        #MainMenu,
-        footer {{
-            display: none !important;
-            visibility: hidden !important;
-        }}
-        .block-container {{
-            max-width: 560px !important;
-            padding-top: 4.2rem !important;
-            padding-bottom: 2rem !important;
-        }}
-        div[data-testid="stForm"] {{
-            max-width: 448px !important;
-            margin: 0 auto !important;
-            border-radius: 8px !important;
-            border: 1px solid #d8dde8 !important;
-            padding: 1.25rem !important;
-            box-shadow: none !important;
-        }}
-        div[data-testid="stForm"] label {{
-            color: #081a35 !important;
-            font-weight: 650 !important;
-        }}
-        div[data-testid="stForm"] input {{
-            min-height: 42px !important;
-        }}
-        div[data-testid="stForm"] button {{
-            width: auto !important;
-            min-width: 92px !important;
-            background: #0b4d88 !important;
-            border-radius: 8px !important;
-            box-shadow: none !important;
-        }}
-        </style>
-        <div class="login-shell">
-            <div class="login-hero">
-                <div class="login-logo">{logo_html}</div>
-                <div class="login-title">Lectura Documentos Forus</div>
-                <div class="login-subtitle">Comex | Contabilidad | Recursos Humanos</div>
-            </div>
+        <div class="login-hero">
+            {logo_html}
+            <div class="login-title">Lectura Documentos Forus</div>
+            <div class="login-subtitle">Comex &nbsp;·&nbsp; Contabilidad &nbsp;·&nbsp; Recursos Humanos</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     with st.form("login_form"):
-        email = st.text_input("Correo electronico", placeholder="hugo.camara@forus.pe").strip().lower()
-        password = st.text_input("Contrasena", type="password")
+        email = st.text_input(
+            "Correo electrónico",
+            placeholder="nombre.apellido@forus.pe",
+        ).strip().lower()
+        password = st.text_input("Contraseña", type="password")
         submitted = st.form_submit_button("Ingresar")
 
     st.markdown(
         """
         <div class="login-footer">
-            Sistema exclusivo para personal autorizado<br>
-            Comex | Contabilidad | Recursos Humanos
+            <strong>Sistema exclusivo para personal autorizado</strong><br>
+            Si no puedes entrar, avisa al administrador del portal
         </div>
         """,
         unsafe_allow_html=True,
@@ -176,7 +335,7 @@ def render_login_screen():
             st.stop()
         expected_password = auth_passwords.get(email)
         if not expected_password:
-            st.error("Falta configurar la contrasena de este usuario en Streamlit Secrets.")
+            st.error("Falta configurar la contraseña de este usuario en Streamlit Secrets.")
             st.stop()
         if password == expected_password:
             modulos = get_user_modules(email)
@@ -186,9 +345,8 @@ def render_login_screen():
             st.session_state["auth_ok"] = True
             st.session_state["auth_user"] = email
             st.session_state["auth_modules"] = modulos
-            st.session_state["modulo_activo"] = modulos[0]
             st.rerun()
-        st.error("Correo o contrasena incorrectos.")
+        st.error("Correo o contraseña incorrectos.")
 
     st.stop()
 
