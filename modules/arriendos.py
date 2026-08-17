@@ -28,7 +28,7 @@ from forus_parsing import (
     find_label_value,
     find_money,
     find_percent,
-    find_razon_social_emisor,
+    find_nombre_emisor,
     find_ruc,
     mes_de_fecha,
     normalize,
@@ -167,6 +167,56 @@ def extraer_local(texto):
                 break
             if re.search(r"\d", parte):
                 return collapse_spaces(parte)
+
+    # 4) Encabezado de tabla con el valor en la linea de abajo, como hace Real
+    #    Plaza: "... ORDEN DE COMPRA LOCAL COMERCIAL CONDICIONES DE PAGO" y
+    #    debajo "2051481127 1800946379 LC-111B A 30 Dias".
+    local = local_bajo_encabezado(texto)
+    if local:
+        return local
+
+    # 5) El local escrito dentro de la glosa: "Renta minima mes Agosto 2026 -
+    #    Local: 99" es como lo pone la PUCP en las observaciones.
+    for linea in split_lines(texto):
+        if "LOCAL" not in normalize(linea):
+            continue
+        match = re.search(r"(?i)\bLOCAL\s*[:.\-]?\s*([A-Z0-9][\w/,\-]{0,18})", linea)
+        if match:
+            candidato = collapse_spaces(match.group(1))
+            if candidato and re.search(r"\d", candidato):
+                return candidato
+
+    return None
+
+
+def local_bajo_encabezado(texto):
+    """Valor de la columna "LOCAL COMERCIAL" cuando el titulo va en otra linea.
+
+    Se localiza en que posicion empieza el titulo y se busca, en la linea de
+    valores de debajo, el trozo que cae mas o menos bajo esa columna.
+    """
+    lineas = split_lines(texto)
+    for indice, linea in enumerate(lineas[:-1]):
+        plano = normalize(linea)
+        posicion = plano.find("LOCAL COMERCIAL")
+        if posicion < 0:
+            continue
+
+        # Solo si de verdad es una fila de encabezados y no una frase.
+        if not any(t in plano for t in ("CODIGO", "ZONA", "PEDIDO", "CONDICIONES", "ORDEN")):
+            continue
+
+        siguiente = lineas[indice + 1]
+        for match in LOCAL_CODIGO_RE.finditer(normalize(siguiente)):
+            # El codigo tiene que caer cerca de la columna del titulo.
+            if abs(match.start() - posicion) <= 30:
+                return collapse_spaces(match.group(1))
+
+        # Si no encaja por posicion, vale cualquier codigo con letra y numero.
+        match = re.search(r"\b([A-Z]{1,3}-?\d{1,5}[A-Z]?(?:[/,-][\dA-Z]+)*)\b",
+                          normalize(siguiente))
+        if match:
+            return collapse_spaces(match.group(1))
 
     return None
 
@@ -331,7 +381,7 @@ def extraer_cabecera(texto, pagina_inicial):
             "FECHA DE VENCIMIENTO", "FECHA VENCIMIENTO", "FECHA VENC",
         ]),
         "RUC Emisor": find_ruc(texto, ["R.U.C.", "RUC"]),
-        "RAZON SOCIAL": find_razon_social_emisor(texto, excluir=("FORUS",)),
+        "RAZON SOCIAL": find_nombre_emisor(texto, excluir=("FORUS",)),
         "Contrato": find_label_value(texto, [
             "NRO. DE CONTRATO", "NUMERO DE CONTRATO", "NUM CONTRATO",
             "N. CONTRATO", "NRO CONTRATO", "CONTRATO",
@@ -395,6 +445,8 @@ def construir_filas_control(cabecera, filas_detalle, nombre_archivo, mes_documen
         concepto, reconocido = concepto_o_original(fila["concepto"])
         if not reconocido:
             notas.append("Concepto sin normalizar: revisar")
+        if not tienda:
+            notas.append("Sin local ni contrato en el documento: completar a mano")
         if not cuadro and base is not None:
             notas.append("El detalle no cuadra con la base imponible")
         if base is None:

@@ -41,7 +41,7 @@ from forus_parsing import (
     find_label_value,
     find_money,
     find_percent,
-    find_razon_social_emisor,
+    find_nombre_emisor,
     fix_mojibake,
     normalize,
     parse_amount,
@@ -252,7 +252,7 @@ def extraer_cabecera(text, pagina_inicial, paginas):
         "Correlativo": correlativo or None,
         "Numero": numero,
         "RUC Emisor": ruc_emisor,
-        "Razon Social Emisor": find_razon_social_emisor(text, excluir=("FORUS",)),
+        "Razon Social Emisor": find_nombre_emisor(text, excluir=("FORUS",)),
         "RUC Cliente": ruc_cliente,
         "Razon Social Cliente": find_label_value(text, [
             "SENOR(ES)", "SENORES", "SENOR", "CLIENTE", "ADQUIRIENTE",
