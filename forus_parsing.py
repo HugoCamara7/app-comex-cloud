@@ -527,3 +527,59 @@ def buscar_periodo_documento(texto):
         return parse_date(match.group(1)), None
 
     return None, None
+
+
+# Lo que nunca es el nombre del emisor: titulos del documento, direcciones y
+# datos de contacto.
+NO_ES_NOMBRE = (
+    "FACTURA", "BOLETA", "NOTA DE", "RECIBO", "R.U.C", "RUC", "SENOR",
+    "DIRECCION", "TELEFONO", "TELEFONOS", "TELF", "FAX", "PAGINA WEB",
+    "CLIENTE", "AV.", "AV ", "CAL.", "CALLE", "JR.", "JIRON", "URB.",
+    "NRO.", "CENTRAL TELEFONICA", "REPRESENTACION", "AUTORIZADO",
+)
+
+# Coletillas del titulo que a veces quedan pegadas al nombre cuando el PDF
+# parte "FACTURA ELECTRONICA" en dos columnas.
+COLA_TITULO_RE = re.compile(
+    r"\s*(?:ELECTR[OÓ]NICA|ELECTR[OÓ]NICO)\s*$", re.I
+)
+
+
+def _nombre_plausible(linea):
+    """Si una linea puede ser el nombre del emisor."""
+    limpia = collapse_spaces(COLA_TITULO_RE.sub("", linea or "")) or ""
+    plano = normalize(limpia)
+
+    if not (6 <= len(limpia) <= 90):
+        return None
+    if any(plano.startswith(t) for t in NO_ES_NOMBRE):
+        return None
+    if re.search(r"\b(?:10|15|16|17|20)\d{9}\b", plano):
+        return None
+    if re.search(r"\d{3,}", plano):          # direcciones y telefonos
+        return None
+    if len(re.findall(r"[A-Z]", plano)) < 6:
+        return None
+    return limpia
+
+
+def find_nombre_emisor(text, excluir=()):
+    """Nombre del emisor, tenga o no forma societaria.
+
+    Primero se busca una razon social con su sufijo (S.A.C., S.R.L. ...). Si no
+    la hay -universidades, nombres comerciales- se toma la primera linea de la
+    cabecera que pueda ser un nombre y no sea un titulo ni una direccion.
+    """
+    societaria = find_razon_social_emisor(text, excluir=excluir)
+    if societaria:
+        return societaria
+
+    excluir_plano = [normalize(termino) for termino in excluir]
+    for linea in split_lines(text)[:12]:
+        if any(termino in normalize(linea) for termino in excluir_plano):
+            continue
+        nombre = _nombre_plausible(linea)
+        if nombre:
+            return nombre
+
+    return None
